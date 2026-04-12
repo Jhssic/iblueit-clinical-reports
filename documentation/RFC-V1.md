@@ -85,7 +85,7 @@ Foram investigadas cinco soluções existentes que atendem, parcialmente, ao mes
 
 #### Breath Biofeedback Game — Bingham et al. (2010)
 
-- **Link:** Literatura científica (Clinical Pediatrics, vol. 49) https://dl.acm.org/doi/10.1145/3706599.3720103?__cf_chl_tk=stH2Zw5WPh.UULR61oDF9.2uu0ni8M42TBqghke2cOQ-1775971020-1.0.1.1-xcd59Cd6AT38.Eb4dAnIAXWTgg0ou1MH6feEFrvkHFk
+- **Link:** https://dl.acm.org/doi/10.1145/3706599.3720103?__cf_chl_tk=stH2Zw5WPh.UULR61oDF9.2uu0ni8M42TBqghke2cOQ-1775971020-1.0.1.1-xcd59Cd6AT38.Eb4dAnIAXWTgg0ou1MH6feEFrvkHFk
 - **Público-alvo:** Crianças com Fibrose Cística.
 - **Funcionalidades principais:** Biofeedback respiratório integrado a jogo; coleta de dados de sopro durante as sessões.
 - **Limitações:** Sistema de pesquisa sem módulo de relatório para clínicos; dados coletados não são transformados em documentação clínica; sem histórico longitudinal por paciente.
@@ -101,7 +101,7 @@ Foram investigadas cinco soluções existentes que atendem, parcialmente, ao mes
 
 #### Nuance DAX
 
-- **Link:** https://nuance.com ; https://www-microsoft-com.translate.goog/en/customers/story/1415193159282858383-nuance-partner-professional-services-azure-machine-learning?_x_tr_sl=en&_x_tr_tl=pt&_x_tr_hl=pt&_x_tr_pto=tc
+- **Link:** https://nuance.com
 - **Público-alvo:** Médicos e equipes clínicas em geral.
 - **Funcionalidades principais:** Transcrição automática de consultas, sumarização de notas clínicas via IA, integração com prontuários eletrônicos.
 - **Limitações:** Não integra dados de jogos sérios ou sensores de reabilitação; custo elevado, inviável para projetos de pesquisa; focado em consultas presenciais, não em dados longitudinais de sessões domiciliares.
