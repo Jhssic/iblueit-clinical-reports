@@ -81,7 +81,7 @@ Foram investigadas cinco soluções existentes que atendem, parcialmente, ao mes
 - **Limitações:** Sem geração de relatório clínico narrativo; sem suporte a jogos terapêuticos; dados inseridos manualmente pelo paciente.
 
 
-![Print do Sistema](assets/ResearchKit.jpg)
+![Print do Sistema](assets/ResearchKit1.jpg)
 
 #### Breath Biofeedback Game — Bingham et al. (2010)
 
@@ -90,7 +90,7 @@ Foram investigadas cinco soluções existentes que atendem, parcialmente, ao mes
 - **Funcionalidades principais:** Biofeedback respiratório integrado a jogo; coleta de dados de sopro durante as sessões.
 - **Limitações:** Sistema de pesquisa sem módulo de relatório para clínicos; dados coletados não são transformados em documentação clínica; sem histórico longitudinal por paciente.
 
-![Print do Sistema](assets/BreatheBiofeedbackGame.jpg)
+![Print do Sistema](assets/BreathBiofeedbackGame.jpg)
 
 #### MHealth CF Analytics — Vagg et al. (2018)
 
