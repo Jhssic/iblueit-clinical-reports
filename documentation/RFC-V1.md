@@ -485,7 +485,7 @@ Os mockups completos estão disponíveis no protótipo Figma linkado acima. A se
  
 **Tela 1 — Login**
  
-![Tela de Login](documentation/assets/tela-01-login.png)
+![Tela de Login](assets/tela-01-login.png)
  
 Tela de entrada do sistema com campos de e-mail e senha. Autenticação via JWT — sem cadastro público, novos profissionais são cadastrados pelo administrador. O aviso inferior reforça que tentativas de acesso são registradas em auditoria, alinhado ao requisito RNF06.
  
@@ -493,7 +493,7 @@ Tela de entrada do sistema com campos de e-mail e senha. Autenticação via JWT 
  
 **Tela 2 — Dashboard**
  
-![Dashboard — Lista de pacientes](documentation/assets/tela-02-dashboard.png)
+![Dashboard — Lista de pacientes](assets/tela-02-dashboard.png)
  
 Visão geral de todos os pacientes em acompanhamento. Exibe código interno, condição clínica, data do último relatório, próxima sessão e indicador de alerta (🔴 Ativo / 🟢 Normal). O contador de alertas ativos no topo permite acesso rápido às prioridades. Barra de busca por código e botão de cadastro de novo paciente.
  
@@ -501,7 +501,7 @@ Visão geral de todos os pacientes em acompanhamento. Exibe código interno, con
  
 **Tela 3 — Cadastro de Paciente**
  
-![Cadastro de novo paciente](documentation/assets/tela-03-cadastro-paciente.png)
+![Cadastro de novo paciente](assets/tela-03-cadastro-paciente.png)
  
 Formulário de cadastro com código gerado automaticamente pelo sistema (PAC-XXX), condição clínica (DPOC / Fibrose Cística), idade e data de início do acompanhamento. O subtítulo reforça a política de privacidade: *"O código é anônimo. Nenhum dado pessoal identificável é armazenado."*
  
@@ -509,7 +509,7 @@ Formulário de cadastro com código gerado automaticamente pelo sistema (PAC-XXX
  
 **Tela 4 — Relatório Atual**
  
-![Relatório clínico atual](documentation/assets/tela-04-relatorio-atual.png)
+![Relatório clínico atual](assets/tela-04-relatorio-atual.png)
  
 Tela central do sistema. Exibe o relatório gerado pelo LLM organizado em blocos visuais distintos: banner de **Alerta ativo** (quando presente, em vermelho), **Resumo da sessão**, **Análise comparativa** e **Aviso de revisão clínica** gerado automaticamente. Ao final, tabela de dados brutos com todas as métricas da sessão (intensidade média/máxima, tempo total, tempo de sopro, pontuação, bem-estar e aderência). Botão **Exportar PDF** no canto superior direito.
  
@@ -517,7 +517,7 @@ Tela central do sistema. Exibe o relatório gerado pelo LLM organizado em blocos
  
 **Tela 5 — Histórico de Relatórios**
  
-![Histórico de relatórios](documentation/assets/tela-05-historico.png)
+![Histórico de relatórios](assets/tela-05-historico.png)
  
 Lista cronológica de todos os relatórios gerados para o paciente, com semana de referência, período, resumo da análise e indicador de alerta. Cada linha possui link **Abrir** para visualizar o relatório completo daquela semana.
  
@@ -525,7 +525,7 @@ Lista cronológica de todos os relatórios gerados para o paciente, com semana d
  
 **Tela 6 — Gráficos de Evolução**
  
-![Gráficos de evolução longitudinal](documentation/assets/tela-06-graficos.png)
+![Gráficos de evolução longitudinal](assets/tela-06-graficos.png)
  
 Gráficos de linha com evolução longitudinal das métricas principais: **Intensidade média de sopro** (em unidades) e **Tempo efetivo de sopro** (em segundos). Pontos em vermelho indicam sessões com alerta ativo. Filtro de período no canto superior direito (Última semana / Último mês / Todo o histórico).
  
@@ -533,7 +533,7 @@ Gráficos de linha com evolução longitudinal das métricas principais: **Inten
  
 **Tela 7 — Configuração de Alertas**
  
-![Configuração de alertas por paciente](documentation/assets/tela-07-alertas.png)
+![Configuração de alertas por paciente](assets/tela-07-alertas.png)
  
 Formulário de critérios de alerta configuráveis por paciente. Cada critério define: **Métrica** (ex.: Pontuação, Intensidade média de sopro), **Condição** (Deterioração consecutiva, Queda percentual) e **Disparar após** N registros consecutivos. Permite adicionar múltiplos critérios e removê-los individualmente. Botão **Salvar configuração** confirma as alterações.
  
@@ -541,7 +541,7 @@ Formulário de critérios de alerta configuráveis por paciente. Cada critério 
  
 **Tela 8 — Upload de Log**
  
-![Upload de log de sessão](documentation/assets/tela-08-upload.png)
+![Upload de log de sessão](assets/tela-08-upload.png)
  
 Área de upload com drag-and-drop para arquivos `.json` ou `.csv` exportados pelo I Blue It. Limite de 10 MB por arquivo e 1 arquivo por sessão. Botão **Processar arquivo** aciona o pipeline de extração de métricas e geração do relatório.
  
