@@ -785,6 +785,7 @@ O sistema foi projetado desde o início com privacidade por design. **Nenhum dad
 - Validação e sanitização de entrada em todos os endpoints (prevenção contra injeção SQL e payloads maliciosos);
 - Arquivos de log armazenados em diretório isolado no servidor, sem acesso direto via URL pública;
 - Apenas dados numéricos agregados — sem qualquer identificador do paciente — são enviados à API do LLM.
+  
 ### 6.1 Privacidade e LGPD
  
 **Dados coletados:** Métricas numéricas de desempenho em sessões de jogo (intensidade de sopro, tempos, pontuação) e respostas a questionários de bem-estar, todos identificados apenas por código interno. Dados de acesso dos profissionais (e-mail e hash de senha).
@@ -794,3 +795,86 @@ O sistema foi projetado desde o início com privacidade por design. **Nenhum dad
 **Direito de remoção (Art. 18 da LGPD):** O administrador do sistema pode arquivar os dados de um paciente mediante solicitação. A remoção definitiva é executada mediante solicitação formal ao responsável técnico, com prazo de resposta de até 72 horas, e documentada no log de auditoria.
  
 ---
+
+## 7. Planejamento do Projeto
+ 
+| Marco | Descrição                                                                                  | Prazo       |
+| ----- | ------------------------------------------------------------------------------------------ | ----------- |
+| M1    | Setup do ambiente, mapeamento do formato dos logs do I Blue It, definição do schema de dados | Semana 1–2  |
+| M2    | Pipeline de processamento de logs funcional — extração e normalização de todas as métricas | Semana 3–5  |
+| M3    | Integração com API do LLM e geração de relatório de prova de conceito                     | Semana 6–7  |
+| M4    | MVP funcional: backend completo + frontend com upload, geração e visualização              | Semana 8–10 |
+| M5    | Validação com profissionais de saúde — Etapa 1: sessão de feedback estruturado            | Semana 11   |
+| M6    | Ajustes pós-validação, sistema de alertas e exportação PDF                                 | Semana 12   |
+| M7    | Validação com dados reais anonimizados — Etapa 2                                           | Semana 13   |
+| M8    | Documentação final, testes, deploy público e entrega                                       | Semana 14   |
+ 
+---
+ 
+## 8. Referências
+ 
+AGUILAR, J. G. et al. **Respiration Tracking Using the Wii Remote Game-Controller**. In: *Proceedings of Medical Informatics in a United and Healthy Europe*, 2011. p. 455–459.
+ 
+DIAS, C. et al. **Uso da Inteligência Artificial em Jogos Digitais aplicados à Reabilitação Respiratória: um Mapeamento Sistemático da Literatura**. UDESC, 2020.
+ 
+DIAS, C. et al. **A MM Its Use in Respiratory Rehabilitation**. UDESC, 2023.
+ 
+DIAS, C. **Tese de Doutorado — publicada**. UDESC, 2024.
+ 
+GRIMES, D. et al. **O Processo de Design de um Sistema Biomédico com Jogo Sério e Dispositivo**. 2018.
+ 
+GRIMES, D. et al. **Sistema biomédico (com jogo sério e dispositivo especial) para reabilitação respiratória**. 2018.
+ 
+NERY, F. et al. **123-SGR: Uma Arquitetura para Jogos Sérios Multimodais para Reabilitação**. UDESC, 2020.
+ 
+SANTOS, R. et al. **I Blue It: Um Jogo Sério para auxiliar na Reabilitação Respiratória**. UDESC, 2018.
+ 
+SANTOS, R. et al. **Estendendo Jogos Sérios com a perspectiva de Serviço**. UDESC, 2020.
+ 
+VAGG, T. et al. **MHealth and Serious Game Analytics for Cystic Fibrosis Adults**. In: *2018 IEEE 31st International Symposium on Computer-Based Medical Systems*, 2018. p. 100–105. DOI: 10.1109/CBMS.2018.00025.
+ 
+---
+ 
+## 9. Apêndices
+ 
+### Apêndice A — Estrutura do Relatório Narrativo Gerado
+ 
+Cada relatório clínico gerado automaticamente pelo sistema é composto pelos seguintes blocos, nesta ordem:
+ 
+1. **Identificação** — código do paciente, data de geração do relatório e período de referência (semana/mês);
+2. **Resumo da sessão** — síntese em 2 a 3 parágrafos do desempenho registrado na(s) sessão(ões) do período;
+3. **Análise comparativa** — comparação com os períodos anteriores, com identificação explícita de tendências de melhora ou deterioração;
+4. **Indicadores de alerta** — quando presentes, destacados visualmente com descrição do critério atingido e número de ocorrências consecutivas;
+5. **Aviso de revisão** — texto fixo: *"Este relatório foi gerado automaticamente por sistema de IA e deve ser revisado pelo profissional responsável antes de ser incorporado ao prontuário clínico."*;
+6. **Dados brutos consolidados** — tabela com todas as métricas numéricas da(s) sessão(ões) do período para referência do profissional.
+### Apêndice B — Repositório e Licença
+ 
+O código-fonte do projeto será disponibilizado em repositório público no GitHub sob licença MIT, conforme exigência da modalidade "Projeto voltado à Comunidade" definida no Playbook do Portfólio da Católica SC.
+ 
+- **Playbook do Portfólio:** https://github.com/CatolicaSC-Portfolio/The-Portfolio-Playbook
+- **Repositório do projeto:** https://github.com/Jhssic/iblueit-clinical-reports.git
+---
+ 
+## 10. Parecer do Comitê de Avaliação
+ 
+*(A ser preenchido pelos professores avaliadores da RFC)*
+ 
+**Avaliador 1:** __________________________
+**Status:** [ ] Aprovado [ ] Ajustar
+ 
+**Observações:**
+ 
+---
+ 
+**Avaliador 2:** __________________________
+**Status:** [ ] Aprovado [ ] Ajustar
+ 
+**Observações:**
+ 
+---
+ 
+**Avaliador 3:** __________________________
+**Status:** [ ] Aprovado [ ] Ajustar
+ 
+**Observações:**
+ 
