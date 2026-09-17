@@ -1,0 +1,88 @@
+{
+  "sessions": [
+    {
+      "playStart": "2026-08-19T14:00:00.000Z",
+      "playFinish": "2026-08-19T14:05:00.000Z",
+      "duration": 300,
+      "result": "64",
+      "stageId": 1,
+      "phase": 1,
+      "level": 1,
+      "relaxTimeSpawned": false,
+      "score": 64,
+      "maxScore": 100,
+      "scoreRatio": 0.64,
+      "gameDevice": "Pitaco",
+      "TargetsSpawned": 20,
+      "TargetsSuccess": 14,
+      "TargetsInsSuccess": 7,
+      "TargetsExpSuccess": 7,
+      "TargetsFails": 6,
+      "TargetsInsFail": 3,
+      "TargetsExpFail": 3,
+      "ObstaclesSpawned": 10,
+      "ObstaclesSuccess": 7,
+      "ObstaclesInsSuccess": 4,
+      "ObstaclesExpSuccess": 3,
+      "ObstaclesFail": 3,
+      "ObstaclesInsFail": 1,
+      "ObstaclesExpFail": 2,
+      "PlayerHp": 75,
+      "BorgScale": 4,
+      "flowDataDevices": [
+        {
+          "deviceName": "Pitaco",
+          "flowData": [
+            { "flowValue": 52, "timestamp": "2026-08-19T14:00:10.000Z" },
+            { "flowValue": 61, "timestamp": "2026-08-19T14:01:00.000Z" },
+            { "flowValue": 58, "timestamp": "2026-08-19T14:02:00.000Z" },
+            { "flowValue": 65, "timestamp": "2026-08-19T14:03:00.000Z" },
+            { "flowValue": 59, "timestamp": "2026-08-19T14:04:00.000Z" }
+          ]
+        }
+      ]
+    },
+    {
+      "playStart": "2026-08-20T09:10:00.000Z",
+      "playFinish": "2026-08-20T09:15:00.000Z",
+      "duration": 300,
+      "result": "70",
+      "stageId": 1,
+      "phase": 1,
+      "level": 1,
+      "relaxTimeSpawned": false,
+      "score": 70,
+      "maxScore": 100,
+      "scoreRatio": 0.70,
+      "gameDevice": "Pitaco",
+      "TargetsSpawned": 20,
+      "TargetsSuccess": 16,
+      "TargetsInsSuccess": 8,
+      "TargetsExpSuccess": 8,
+      "TargetsFails": 4,
+      "TargetsInsFail": 2,
+      "TargetsExpFail": 2,
+      "ObstaclesSpawned": 10,
+      "ObstaclesSuccess": 8,
+      "ObstaclesInsSuccess": 4,
+      "ObstaclesExpSuccess": 4,
+      "ObstaclesFail": 2,
+      "ObstaclesInsFail": 1,
+      "ObstaclesExpFail": 1,
+      "PlayerHp": 85,
+      "BorgScale": 3,
+      "flowDataDevices": [
+        {
+          "deviceName": "Pitaco",
+          "flowData": [
+            { "flowValue": 55, "timestamp": "2026-08-20T09:10:10.000Z" },
+            { "flowValue": 68, "timestamp": "2026-08-20T09:11:00.000Z" },
+            { "flowValue": 63, "timestamp": "2026-08-20T09:12:00.000Z" },
+            { "flowValue": 70, "timestamp": "2026-08-20T09:13:00.000Z" },
+            { "flowValue": 66, "timestamp": "2026-08-20T09:14:00.000Z" }
+          ]
+        }
+      ]
+    }
+  ]
+}
