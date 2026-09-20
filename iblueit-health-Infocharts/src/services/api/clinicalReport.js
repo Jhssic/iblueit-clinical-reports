@@ -53,7 +53,7 @@ export const buildPeriodFromPreset = (presetKey, customStart, customEnd) => {
       label: moment(customStart).format("DD/MM") + " – " + moment(customEnd).format("DD/MM"),
     };
   }
-  const preset = PERIOD_PRESETS.find((p) => p.key === presetKey);
+  const preset = PERIOD_PRESETS.find((p) => p.key === presetKey) || PERIOD_PRESETS[0];
   const end = moment().endOf("day");
   const start = moment().subtract(preset.days, "days").startOf("day");
   return {

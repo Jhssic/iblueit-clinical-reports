@@ -2,7 +2,9 @@ module.exports = async function (context, req) {
     const mongoose = require('mongoose');
     const axios = require('axios');
     const DATABASE = process.env.MongoDbAtlas;
-    mongoose.connect(DATABASE);
+    if (mongoose.connection.readyState === 0) {
+        mongoose.connect(DATABASE);
+    }
     mongoose.Promise = global.Promise;
 
     require('../shared/UserAccount');
@@ -33,7 +35,7 @@ module.exports = async function (context, req) {
 
     // --- RN01: apenas Administrator/Therapist pode gerar relatório ---
     const requestingUser = await UserAccountModel.findOne({ "gameToken.token": req.headers.gametoken });
-    if (!requestingUser || requestingUser.role !== "Administrator") {
+    if (!requestingUser || !["Administrator", "Therapist"].includes(requestingUser.role)) {
         context.res = {
             status: 403,
             body: utils.createResponse(false, false, "Apenas profissionais autenticados podem gerar relatórios clínicos.", null, 1),
@@ -152,7 +154,7 @@ module.exports = async function (context, req) {
         }
 
         // --- RF09/RF10/RN04: avalia critérios configurados (ou o padrão, se nenhum existir) ---
-        const alertsTriggered = await evaluateAlerts(pacientId, mongoose);
+        const alertsTriggered = await evaluateAlerts(pacientId, device, mongoose);
 
         const savedReport = await new ClinicalReportModel({
             pacientId,
