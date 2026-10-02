@@ -124,6 +124,9 @@ module.exports = async function (context, req) {
             height: pacient.height,
         };
 
+        // --- FA02: campos opcionais que não puderam ser consultados no período ---
+        const missingOptionalFields = clinicalMetrics.missingOptionalFields(current);
+
         const iaPayload = {
             device,
             period: { start: period.start, end: period.end },
@@ -132,6 +135,7 @@ module.exports = async function (context, req) {
             currentMetrics: current.metrics,
             previousMetrics: isFirstReport ? null : previous.metrics,
             metricSources: current.metricSources,
+            missingOptionalFields,
             patientContext,
             alerts: [],
         };
@@ -167,6 +171,9 @@ module.exports = async function (context, req) {
             avisoRevisao: iaResponse.avisoRevisao,
             dadosBrutos: iaResponse.dadosBrutos,
             generatedBy: iaResponse.generatedBy,
+            coerenciaVerificada: iaResponse.coerenciaVerificada,
+            avisosCoerencia: iaResponse.avisosCoerencia,
+            missingOptionalFields,
             alerts: alertsTriggered,
             generatedByUserId: String(requestingUser._id),
         }).save();

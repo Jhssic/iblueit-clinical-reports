@@ -23,6 +23,13 @@ const ClinicalReportSchema = mongoose.Schema({
         sourceCollection: { type: String },
     }],
     generatedBy: { type: String },
+    coerenciaVerificada: { type: Boolean, default: true },
+    avisosCoerencia: [{
+        metrica: { type: String },
+        esperado: { type: String },
+        trechoSuspeito: { type: String },
+    }],
+    missingOptionalFields: [{ type: String }],
     alerts: [{
         metric: { type: String },
         condition: { type: String },
