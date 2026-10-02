@@ -1,5 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Tabs from "@mui/material/Tabs";
@@ -42,6 +44,7 @@ import {
 
 import { useMyContext } from "../../providers/MyContext";
 import { pathRoutes } from "../../providers/Routes";
+import { getTokenParameters } from "../../providers/sessionStorage";
 import {
   generateClinicalReport,
   fetchClinicalReportsHistory,
@@ -52,6 +55,7 @@ import {
   PERIOD_PRESETS,
   fetchAlertCriteria,
   saveAlertCriteria,
+  archiveClinicalReport,
 } from "../../services/api/clinicalReport";
 
 // ─── Estilos reutilizáveis ────────────────────────────────────────────────────
@@ -73,6 +77,14 @@ const BLOCK = {
 
 const DEVICE_OPTIONS = ["Pitaco", "Manovacuômetro", "Cinta"];
 
+// Pacient.capacities<Sufixo> usa nomes curtos que não são iguais ao valor de
+// "device" enviado pela API (ver Validators.js) — Manovacuômetro -> Mano.
+const DEVICE_CAPACITIES_SUFFIX = {
+  Pitaco: "Pitaco",
+  Manovacuômetro: "Mano",
+  Cinta: "Cinta",
+};
+
 // Só métricas com série temporal real por sessão (plataformoverviews) são avaliáveis
 // como tendência hoje — CGc/FR/PEmax/PImax ficam fora até terem essa granularidade.
 const ALERT_METRIC_OPTIONS = [
@@ -88,6 +100,134 @@ const describeAlert = (a) => {
   return a.condition === "Queda percentual >"
     ? `${label}: queda percentual maior que ${a.triggerValue}% entre as duas últimas sessões.`
     : `${label}: deterioração consecutiva em ${a.triggerValue} sessões.`;
+};
+
+// ─── Indicador rápido de status do paciente (Estável/Atenção/Crítico) ────────
+// Crítico: algum critério de alerta configurado foi atingido (RF09/RN04).
+// Atenção: sem alerta formal disparado, mas o DJ já caiu mais de 10% em
+// relação ao período anterior — um aviso antecipado antes de virar alerta.
+// Estável: sem alerta e sem queda relevante (ou é a primeira sessão, sem
+// período anterior pra comparar).
+const PATIENT_STATUS = {
+  critico: { label: "Crítico", color: "#c62828", bg: "#fdecea", border: "#c62828" },
+  atencao: { label: "Atenção", color: "#e65100", bg: "#fff3e0", border: "#e65100" },
+  estavel: { label: "Estável", color: "#2e7d32", bg: "#e8f5e9", border: "#2e7d32" },
+};
+
+const getPatientStatus = (report) => {
+  if (!report) return null;
+  if (report.alerts && report.alerts.length > 0) return PATIENT_STATUS.critico;
+
+  const dj = report.currentMetrics?.DJ;
+  const prevDj = report.previousMetrics?.DJ;
+  if (dj != null && prevDj != null && prevDj !== 0) {
+    const pctChange = ((dj - prevDj) / prevDj) * 100;
+    if (pctChange <= -10) return PATIENT_STATUS.atencao;
+  }
+  return PATIENT_STATUS.estavel;
+};
+
+// ─── RF08 — montagem do PDF nativo do relatório clínico ──────────────────────
+// Layout próprio (texto real, não captura de tela): título, dados do paciente,
+// alertas, resumo/análise, dados brutos em tabela — com paginação automática.
+
+// A fonte padrão do jsPDF (Helvetica/WinAnsi) só cobre ASCII + Latin-1 (acentos
+// do português entram aí) mais um punhado de símbolos tipográficos comuns.
+// O LLM às vezes usa espaços especiais, caracteres invisíveis (zero-width),
+// subscrito/sobrescrito etc. — qualquer um desses fora do suportado faz a
+// largura do glyph ser mal calculada e estica/corrompe a linha inteira no PDF.
+const PDF_CHAR_REPLACEMENTS = {
+  "‘": "'", "’": "'", "“": '"', "”": '"',
+  "–": "-", "—": "-", "…": "...", "•": "-",
+  " ": " ", " ": " ", " ": " ", " ": " ", " ": " ",
+  " ": " ", " ": " ", " ": " ", " ": " ", " ": " ",
+  " ": " ", " ": " ", " ": " ", " ": " ", "　": " ",
+  "​": "", "‌": "", "‍": "", "﻿": "",
+  "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4",
+  "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9",
+  "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
+  "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9",
+};
+const sanitizeForPdf = (text) => {
+  if (!text) return text;
+  let out = "";
+  for (const ch of text) {
+    if (PDF_CHAR_REPLACEMENTS[ch] !== undefined) {
+      out += PDF_CHAR_REPLACEMENTS[ch];
+    } else if (ch.codePointAt(0) <= 0xff) {
+      out += ch; // ASCII + Latin-1 — coberto pela fonte padrão do jsPDF
+    } else {
+      out += " "; // qualquer outro caractere não suportado vira espaço
+    }
+  }
+  return out.replace(/ {2,}/g, " ");
+};
+
+const PDF_MARGIN = 40;
+const PDF_COLORS = {
+  navy: [30, 43, 72],
+  gray: [117, 117, 117],
+  orange: [230, 81, 0],
+  orangeBg: [255, 243, 224],
+  red: [198, 40, 40],
+  redBg: [253, 236, 234],
+};
+
+const pdfEnsureSpace = (doc, y, needed, pageHeight) => {
+  if (y + needed > pageHeight - PDF_MARGIN) {
+    doc.addPage();
+    return PDF_MARGIN;
+  }
+  return y;
+};
+
+const pdfAddParagraph = (doc, text, y, pageWidth, pageHeight, { fontSize = 11, lineHeight = 15, color = [60, 60, 60] } = {}) => {
+  doc.setFontSize(fontSize);
+  doc.setTextColor(...color);
+  const maxWidth = pageWidth - PDF_MARGIN * 2;
+  const lines = doc.splitTextToSize(sanitizeForPdf(text) || "—", maxWidth);
+  let cursor = y;
+  lines.forEach((line) => {
+    cursor = pdfEnsureSpace(doc, cursor, lineHeight, pageHeight);
+    doc.text(line, PDF_MARGIN, cursor);
+    cursor += lineHeight;
+  });
+  return cursor;
+};
+
+const pdfAddSectionTitle = (doc, text, y, pageHeight) => {
+  let cursor = pdfEnsureSpace(doc, y, 22, pageHeight);
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(...PDF_COLORS.navy);
+  doc.text(text, PDF_MARGIN, cursor);
+  doc.setFont(undefined, "normal");
+  return cursor + 18;
+};
+
+const pdfAddNoteBox = (doc, { title, lines, bg, border, text }, y, pageWidth, pageHeight) => {
+  const maxWidth = pageWidth - PDF_MARGIN * 2 - 20;
+  doc.setFontSize(10);
+  const wrappedLines = lines.flatMap((l) => doc.splitTextToSize(sanitizeForPdf(l), maxWidth));
+  const boxHeight = 24 + wrappedLines.length * 13;
+  let cursor = pdfEnsureSpace(doc, y, boxHeight + 10, pageHeight);
+
+  doc.setFillColor(...bg);
+  doc.setDrawColor(...border);
+  doc.rect(PDF_MARGIN, cursor, pageWidth - PDF_MARGIN * 2, boxHeight, "FD");
+
+  doc.setFont(undefined, "bold");
+  doc.setTextColor(...border);
+  doc.text(title, PDF_MARGIN + 10, cursor + 16);
+  doc.setFont(undefined, "normal");
+  doc.setTextColor(...text);
+  let lineY = cursor + 32;
+  wrappedLines.forEach((l) => {
+    doc.text(l, PDF_MARGIN + 10, lineY);
+    lineY += 13;
+  });
+
+  return cursor + boxHeight + 16;
 };
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -107,9 +247,11 @@ const ClinicalReport = () => {
   const [historyFilter, setHistoryFilter] = useState({ dataIni: firstDayOfMonth(), dataFim: "" });
 
   const [device, setDevice] = useState("Pitaco");
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [djSeries, setDjSeries] = useState([]);
   const [cgcSeries, setCgcSeries] = useState([]);
   const [pacientProfile, setPacientProfile] = useState(null);
+  const [graphPeriod, setGraphPeriod] = useState("todas");
 
   // Aba "Gerar relatório"
   const [periodPreset, setPeriodPreset] = useState("semana");
@@ -151,6 +293,249 @@ const ClinicalReport = () => {
     const data = await fetchAlertCriteria(context.patientId);
     if (data.length) {
       setCriteria(data.map((c) => ({ metric: c.metric, condition: c.condition, triggerValue: c.triggerValue })));
+    }
+  };
+
+  // RN05 — arquiva um relatório do histórico (nunca exclui).
+  const handleArchiveReport = async (reportId) => {
+    try {
+      await archiveClinicalReport(context.patientId, reportId);
+      setReports(reports.filter((r) => r._id !== reportId));
+      context.addNotification("success", "Relatório arquivado.");
+    } catch (err) {
+      context.addNotification("error", "Não foi possível arquivar o relatório. Tente novamente.");
+    }
+  };
+
+  // RF08 — monta um PDF nativo (texto real, não captura de tela) do relatório atual.
+  const handleExportPdf = async () => {
+    if (!currentReport || exportingPdf) return;
+    setExportingPdf(true);
+    try {
+      const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      let y = PDF_MARGIN;
+
+      // Cabeçalho
+      doc.setFont(undefined, "bold");
+      doc.setFontSize(18);
+      doc.setTextColor(...PDF_COLORS.navy);
+      doc.text("Relatório Clínico — I Blue It", PDF_MARGIN, y);
+
+      // Status rápido do paciente (Estável/Atenção/Crítico), alinhado à direita
+      const patientStatus = getPatientStatus(currentReport);
+      if (patientStatus) {
+        const statusColorMap = {
+          "Crítico": [198, 40, 40],
+          "Atenção": [230, 81, 0],
+          "Estável": [46, 125, 50],
+        };
+        const statusRgb = statusColorMap[patientStatus.label] || [117, 117, 117];
+        doc.setFontSize(10);
+        doc.setFont(undefined, "bold");
+        const statusTextWidth = doc.getTextWidth(patientStatus.label) + 16;
+        const statusX = pageWidth - PDF_MARGIN - statusTextWidth;
+        doc.setFillColor(...statusRgb);
+        doc.roundedRect(statusX, y - 14, statusTextWidth, 20, 4, 4, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.text(patientStatus.label, statusX + 8, y);
+        doc.setFont(undefined, "normal");
+      }
+
+      y += 22;
+
+      doc.setFont(undefined, "normal");
+      doc.setFontSize(11);
+      doc.setTextColor(...PDF_COLORS.gray);
+      doc.text(
+        `${currentReport.period.label} · ${currentReport.sessionCount} sessão(ões) · ${currentReport.device}`,
+        PDF_MARGIN,
+        y
+      );
+      y += 16;
+      doc.setFontSize(9);
+      doc.text(
+        `Gerado em ${new Date(currentReport.created_at).toLocaleString("pt-BR")} · ${
+          currentReport.generatedBy === "llm" ? "texto via LLM" : "texto via template"
+        }`,
+        PDF_MARGIN,
+        y
+      );
+      y += 4;
+
+      // Dados do paciente e do profissional responsável
+      const professionalName = getTokenParameters("fullname");
+      const professionalRole = getTokenParameters("role");
+      let age = null;
+      if (pacientProfile && pacientProfile.birthday) {
+        const birth = new Date(pacientProfile.birthday);
+        const today = new Date();
+        age = today.getFullYear() - birth.getFullYear();
+        const monthDiff = today.getMonth() - birth.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
+      }
+
+      doc.setDrawColor(224, 224, 224);
+      doc.line(PDF_MARGIN, y, pageWidth - PDF_MARGIN, y);
+      y += 16;
+
+      doc.setFontSize(10);
+      doc.setTextColor(...PDF_COLORS.navy);
+      doc.setFont(undefined, "bold");
+      doc.text("Paciente:", PDF_MARGIN, y);
+      doc.setFont(undefined, "normal");
+      doc.setTextColor(60, 60, 60);
+      const patientLine = [
+        context.patientName || "—",
+        age != null ? `${age} anos` : null,
+        pacientProfile?.sex || null,
+        pacientProfile?.condition || null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      doc.text(patientLine, PDF_MARGIN + 85, y);
+      y += 14;
+
+      if (pacientProfile?.weight || pacientProfile?.height) {
+        doc.setTextColor(...PDF_COLORS.gray);
+        doc.setFontSize(9);
+        doc.text(
+          `Peso/Altura: ${pacientProfile?.weight ? pacientProfile.weight + " kg" : "—"} / ${
+            pacientProfile?.height ? pacientProfile.height + " cm" : "—"
+          }`,
+          PDF_MARGIN + 85,
+          y
+        );
+        y += 14;
+      }
+
+      doc.setFontSize(10);
+      doc.setTextColor(...PDF_COLORS.navy);
+      doc.setFont(undefined, "bold");
+      doc.text("Profissional:", PDF_MARGIN, y);
+      doc.setFont(undefined, "normal");
+      doc.setTextColor(60, 60, 60);
+      doc.text(
+        [professionalName, professionalRole].filter(Boolean).join(" · ") || "—",
+        PDF_MARGIN + 85,
+        y
+      );
+      y += 20;
+
+      // Alerta ativo
+      if (currentReport.alerts.length > 0) {
+        y = pdfAddNoteBox(
+          doc,
+          {
+            title: "Alerta ativo",
+            lines: currentReport.alerts.map(describeAlert),
+            bg: PDF_COLORS.orangeBg,
+            border: PDF_COLORS.orange,
+            text: [191, 54, 12],
+          },
+          y,
+          pageWidth,
+          pageHeight
+        );
+      }
+
+      // Possível inconsistência (verificação de coerência)
+      if (currentReport.coerenciaVerificada === false) {
+        y = pdfAddNoteBox(
+          doc,
+          {
+            title: "Possível inconsistência no texto gerado",
+            lines: [
+              "O texto menciona uma tendência que não bate com o valor real da métrica. Revise com atenção.",
+              ...(currentReport.avisosCoerencia || []).map(
+                (a) => `${a.metrica} — esperado: ${a.esperado} · trecho: "${a.trechoSuspeito}"`
+              ),
+            ],
+            bg: PDF_COLORS.redBg,
+            border: PDF_COLORS.red,
+            text: [142, 28, 28],
+          },
+          y,
+          pageWidth,
+          pageHeight
+        );
+      }
+
+      // Métricas principais
+      y = pdfEnsureSpace(doc, y, 20, pageHeight);
+      doc.setFont(undefined, "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(...PDF_COLORS.navy);
+      const dj = currentReport.currentMetrics.DJ;
+      const pj = currentReport.currentMetrics.PJ;
+      const cgc = currentReport.currentMetrics.CGc;
+      doc.text(
+        `DJ: ${dj != null ? Number(dj).toFixed(2) : "—"}    PJ: ${pj != null ? Number(pj).toFixed(2) : "—"}    CGc: ${
+          cgc != null ? Number(cgc).toFixed(2) : "—"
+        }`,
+        PDF_MARGIN,
+        y
+      );
+      doc.setFont(undefined, "normal");
+      y += 24;
+
+      // Resumo da sessão
+      y = pdfAddSectionTitle(doc, "Resumo da sessão", y, pageHeight);
+      y = pdfAddParagraph(doc, currentReport.resumoSessao, y, pageWidth, pageHeight);
+      y += 10;
+
+      // Análise comparativa
+      if (currentReport.analiseComparativa) {
+        y = pdfAddSectionTitle(doc, "Análise comparativa", y, pageHeight);
+        y = pdfAddParagraph(doc, currentReport.analiseComparativa, y, pageWidth, pageHeight);
+        y += 10;
+      }
+
+      // FA02 — campos opcionais não consultados
+      if (currentReport.missingOptionalFields && currentReport.missingOptionalFields.length > 0) {
+        y = pdfAddParagraph(
+          doc,
+          `Campos que não puderam ser consultados neste período: ${currentReport.missingOptionalFields.join(", ")}.`,
+          y,
+          pageWidth,
+          pageHeight,
+          { fontSize: 9, lineHeight: 12, color: PDF_COLORS.gray }
+        );
+        y += 10;
+      }
+
+      // Aviso de revisão
+      y = pdfAddParagraph(doc, currentReport.avisoRevisao, y, pageWidth, pageHeight, {
+        fontSize: 9,
+        lineHeight: 12,
+        color: PDF_COLORS.gray,
+      });
+      y += 16;
+
+      // Dados brutos consolidados
+      y = pdfAddSectionTitle(doc, "Dados brutos consolidados", y, pageHeight);
+      autoTable(doc, {
+        startY: y,
+        margin: { left: PDF_MARGIN, right: PDF_MARGIN },
+        head: [["Métrica", "Sigla", "Valor", "Unidade", "Collection"]],
+        body: currentReport.dadosBrutos.map((row) => [
+          row.metrica,
+          row.sigla,
+          typeof row.valor === "number" ? row.valor.toFixed(2) : row.valor,
+          row.unidade,
+          row.sourceCollection,
+        ]),
+        headStyles: { fillColor: PDF_COLORS.navy },
+        styles: { fontSize: 9 },
+      });
+
+      const sessionLabel = (currentReport?.period?.label || "relatorio").replace(/[^\w-]+/g, "_");
+      doc.save(`relatorio-clinico-${sessionLabel}.pdf`);
+    } catch (err) {
+      context.addNotification("error", "Não foi possível exportar o PDF. Tente novamente.");
+    } finally {
+      setExportingPdf(false);
     }
   };
 
@@ -224,6 +609,41 @@ const ClinicalReport = () => {
     }
   };
 
+  // ── RF07: filtro de período e marcação de sessões com alerta nos gráficos ──
+
+  const GRAPH_PERIOD_OPTIONS = [{ key: "todas", label: "Todo o período" }, ...PERIOD_PRESETS];
+
+  const filterByGraphPeriod = (series) => {
+    if (graphPeriod === "todas") return series;
+    const preset = PERIOD_PRESETS.find((p) => p.key === graphPeriod);
+    if (!preset) return series;
+    const cutoff = Date.now() - preset.days * 24 * 60 * 60 * 1000;
+    return series.filter((s) => s.timestamp >= cutoff);
+  };
+
+  const filteredDjSeries = filterByGraphPeriod(djSeries);
+  const filteredCgcSeries = filterByGraphPeriod(cgcSeries);
+
+  const formatDDMM = (date) =>
+    `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
+
+  const alertDates = new Set();
+  reports.forEach((r) => {
+    if (!r.alerts || !r.alerts.length || !r.period) return;
+    const cursor = new Date(r.period.start);
+    const end = new Date(r.period.end);
+    while (cursor <= end) {
+      alertDates.add(formatDDMM(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  });
+
+  const djDot = (props) => {
+    const { cx, cy, payload } = props;
+    const isAlert = alertDates.has(payload.date);
+    return <circle key={`dj-dot-${payload.date}`} cx={cx} cy={cy} r={isAlert ? 5 : 3} fill={isAlert ? "#d32f2f" : "#1e2b48"} />;
+  };
+
   // ── Estados de loading / sem dados ────────────────────────────────────────
 
   if (loading) {
@@ -262,14 +682,10 @@ const ClinicalReport = () => {
             variant="contained"
             startIcon={<PictureAsPdfIcon />}
             sx={BTN}
-            onClick={() =>
-              context.addNotification(
-                "warning",
-                "Exportação de PDF ainda não implementada (RF08 — próxima etapa)."
-              )
-            }
+            disabled={exportingPdf}
+            onClick={handleExportPdf}
           >
-            Exportar PDF
+            {exportingPdf ? "Gerando PDF..." : "Exportar PDF"}
           </Button>
         )}
       </Box>
@@ -322,9 +738,21 @@ const ClinicalReport = () => {
 
           {tab === 0 && currentReport && (
             <Box>
-              <Typography sx={{ fontSize: 15, fontWeight: "bold", color: "#11192A", mb: 0.5 }}>
-                {currentReport.period.label} · {currentReport.sessionCount} sessão(ões) · {currentReport.device}
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 0.5, flexWrap: "wrap" }}>
+                <Typography sx={{ fontSize: 15, fontWeight: "bold", color: "#11192A" }}>
+                  {currentReport.period.label} · {currentReport.sessionCount} sessão(ões) · {currentReport.device}
+                </Typography>
+                {(() => {
+                  const status = getPatientStatus(currentReport);
+                  return status ? (
+                    <Chip
+                      size="small"
+                      label={status.label}
+                      sx={{ backgroundColor: status.bg, color: status.color, fontWeight: "bold", border: `1px solid ${status.border}` }}
+                    />
+                  ) : null;
+                })()}
+              </Box>
               <Typography sx={{ fontSize: 12, color: "#9e9e9e", mb: 2 }}>
                 Gerado em {new Date(currentReport.created_at).toLocaleString("pt-BR")} ·{" "}
                 {currentReport.generatedBy === "llm" ? "texto via LLM" : "texto via template"}
@@ -338,6 +766,25 @@ const ClinicalReport = () => {
                     {currentReport.alerts.map((a, i) => (
                       <Typography key={i} sx={{ color: "#bf360c", fontSize: 13, mt: 0.3 }}>
                         {describeAlert(a)}
+                      </Typography>
+                    ))}
+                  </Box>
+                </Paper>
+              )}
+
+              {currentReport.coerenciaVerificada === false && (
+                <Paper sx={{ backgroundColor: "#fdecea", border: "1px solid #c62828", borderRadius: 2, p: 2.5, mb: 2.5, display: "flex", alignItems: "flex-start" }}>
+                  <WarningAmberIcon sx={{ color: "#c62828", mr: 1.5, mt: 0.2, flexShrink: 0 }} />
+                  <Box>
+                    <Typography sx={{ color: "#c62828", fontWeight: "bold", fontSize: 14 }}>
+                      Possível inconsistência no texto gerado
+                    </Typography>
+                    <Typography sx={{ color: "#8e1c1c", fontSize: 12, mt: 0.3, mb: 0.5 }}>
+                      O texto abaixo menciona uma tendência que não bate com o valor real da métrica. Revise com atenção antes de usar este relatório.
+                    </Typography>
+                    {(currentReport.avisosCoerencia || []).map((a, i) => (
+                      <Typography key={i} sx={{ color: "#bf360c", fontSize: 13, mt: 0.3 }}>
+                        {a.metrica} — esperado: {a.esperado} · trecho: "{a.trechoSuspeito}"
                       </Typography>
                     ))}
                   </Box>
@@ -387,6 +834,16 @@ const ClinicalReport = () => {
                   {currentReport.avisoRevisao}
                 </Typography>
               </Paper>
+
+              {/* FA02 — campos opcionais que não puderam ser consultados no período */}
+              {currentReport.missingOptionalFields && currentReport.missingOptionalFields.length > 0 && (
+                <Paper sx={{ backgroundColor: "#f5f5f5", borderRadius: 2, p: 2, mb: 2.5, display: "flex", alignItems: "center", boxShadow: 1 }}>
+                  <DescriptionIcon sx={{ color: "#9e9e9e", mr: 1.5, fontSize: 18, flexShrink: 0 }} />
+                  <Typography sx={{ color: "#757575", fontSize: 12 }}>
+                    Campos que não puderam ser consultados neste período: {currentReport.missingOptionalFields.join(", ")}.
+                  </Typography>
+                </Paper>
+              )}
 
               <Paper sx={BLOCK}>
                 <Typography sx={{ fontWeight: "bold", color: "#11192A", fontSize: 15, mb: 2 }}>
@@ -493,6 +950,13 @@ const ClinicalReport = () => {
                             >
                               Abrir
                             </Button>
+                            <Button
+                              size="small"
+                              sx={{ color: "#9e9e9e", fontSize: 12, textTransform: "none" }}
+                              onClick={() => handleArchiveReport(r._id)}
+                            >
+                              Arquivar
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -508,47 +972,60 @@ const ClinicalReport = () => {
             <Box>
               <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2, flexWrap: "wrap", gap: 2 }}>
                 <Typography sx={{ fontSize: 15, fontWeight: "bold", color: "#11192A" }}>Evolução longitudinal</Typography>
-                <FormControl size="small" sx={{ minWidth: 180 }}>
-                  <InputLabel>Dispositivo</InputLabel>
-                  <Select sx={{ color: "#11192A" }} value={device} label="Dispositivo" onChange={(e) => setDevice(e.target.value)}>
-                    {DEVICE_OPTIONS.map((d) => (
-                      <MenuItem key={d} value={d}>{d}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <Box sx={{ display: "flex", gap: 2 }}>
+                  <FormControl size="small" sx={{ minWidth: 160 }}>
+                    <InputLabel>Período</InputLabel>
+                    <Select sx={{ color: "#11192A" }} value={graphPeriod} label="Período" onChange={(e) => setGraphPeriod(e.target.value)}>
+                      {GRAPH_PERIOD_OPTIONS.map((p) => (
+                        <MenuItem key={p.key} value={p.key}>{p.label}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <FormControl size="small" sx={{ minWidth: 180 }}>
+                    <InputLabel>Dispositivo</InputLabel>
+                    <Select sx={{ color: "#11192A" }} value={device} label="Dispositivo" onChange={(e) => setDevice(e.target.value)}>
+                      {DEVICE_OPTIONS.map((d) => (
+                        <MenuItem key={d} value={d}>{d}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
               </Box>
 
               <Paper sx={BLOCK}>
                 <Typography sx={{ fontWeight: "bold", color: "#11192A", fontSize: 14, mb: 2 }}>
                   Desempenho do Jogador (DJ) · plataformoverviews
                 </Typography>
-                {!djSeries.length ? (
+                {!filteredDjSeries.length ? (
                   <Typography sx={{ color: "#9e9e9e", fontSize: 13, py: 2, textAlign: "center" }}>Sem dados.</Typography>
                 ) : (
                   <Box sx={{ height: 260 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={djSeries} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+                      <LineChart data={filteredDjSeries} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                         <XAxis dataKey="date" tick={{ fill: "#9e9e9e", fontSize: 12 }} />
                         <YAxis tick={{ fill: "#9e9e9e", fontSize: 12 }} />
                         <Tooltip />
-                        <Line type="monotone" dataKey="DJ" stroke="#1e2b48" strokeWidth={2} dot />
+                        <Line type="monotone" dataKey="DJ" stroke="#1e2b48" strokeWidth={2} dot={djDot} />
                       </LineChart>
                     </ResponsiveContainer>
                   </Box>
                 )}
+                <Typography sx={{ fontSize: 11, color: "#9e9e9e", mt: 1 }}>
+                  Ponto vermelho = sessão dentro do período de um relatório com alerta ativo.
+                </Typography>
               </Paper>
 
               <Paper sx={BLOCK}>
                 <Typography sx={{ fontWeight: "bold", color: "#11192A", fontSize: 14, mb: 2 }}>
                   Carga Corrente (CGc) · gameparameters
                 </Typography>
-                {!cgcSeries.length ? (
+                {!filteredCgcSeries.length ? (
                   <Typography sx={{ color: "#9e9e9e", fontSize: 13, py: 2, textAlign: "center" }}>Sem dados.</Typography>
                 ) : (
                   <Box sx={{ height: 260 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={cgcSeries} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+                      <LineChart data={filteredCgcSeries} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                         <XAxis dataKey="date" tick={{ fill: "#9e9e9e", fontSize: 12 }} />
                         <YAxis tick={{ fill: "#9e9e9e", fontSize: 12 }} />
@@ -565,8 +1042,8 @@ const ClinicalReport = () => {
                   Frequência Respiratória (FR) · perfil do paciente
                 </Typography>
                 <Typography sx={{ fontSize: 22, fontWeight: "bold", color: "#e65100" }}>
-                  {pacientProfile && pacientProfile["capacities" + device]
-                    ? pacientProfile["capacities" + device].respiratoryRate + " rpm"
+                  {pacientProfile && pacientProfile["capacities" + DEVICE_CAPACITIES_SUFFIX[device]]
+                    ? pacientProfile["capacities" + DEVICE_CAPACITIES_SUFFIX[device]].respiratoryRate + " rpm"
                     : "—"}
                 </Typography>
                 <Typography sx={{ fontSize: 12, color: "#9e9e9e", mt: 0.5 }}>
