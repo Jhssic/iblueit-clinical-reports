@@ -26,11 +26,16 @@ async function extractMetricsForPeriod({ pacientId, device, start, end }, mongoo
 
     const dateFilter = { $gte: start, $lte: end };
 
+    // Filtra pela data real da sessão (playFinish), não por created_at — a data
+    // de inserção no banco não é garantia da data em que a sessão aconteceu
+    // (ex: sincronização atrasada, importação de dados históricos).
     const plataformSessions = await PlataformOverviewModel.find({
         pacientId,
-        created_at: dateFilter,
+        playFinish: dateFilter,
     }).populate('flowDataDevicesId');
 
+    // GameParameter não tem campo de data da sessão no schema atual (só
+    // created_at/updated_at) — usando created_at aqui é a única opção disponível.
     const gameParameters = await GameParameterModel.find({
         pacientId,
         created_at: dateFilter,
