@@ -30,6 +30,17 @@ export const fetchClinicalReportsHistory = async (patientId, { dataIni, dataFim 
   return response.data.data || [];
 };
 
+// ─── RN05 — Arquivar relatório (nunca excluir, só arquivar) ──────────────────────────────
+
+export const archiveClinicalReport = async (patientId, reportId) => {
+  const response = await axios.patch(
+    `${BaseUrl()}/pacients/${patientId}/clinicalreport/${reportId}/archive`,
+    {},
+    { headers: headers() }
+  );
+  return response.data;
+};
+
 // ─── Perfil do paciente (usado como referência de FR na aba Gráficos) ───────────────────
 
 export const fetchPacientProfile = async (patientId) => {
