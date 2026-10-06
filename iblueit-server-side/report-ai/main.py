@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 
@@ -7,12 +6,8 @@ import narrative
 
 app = FastAPI(title="I Blue It — Report AI (URL_API_IA)")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Serviço interno: só a Azure Function (server-to-server) chama este endpoint,
+# então não há necessidade de liberar CORS pra origens de navegador.
 
 
 class Period(BaseModel):

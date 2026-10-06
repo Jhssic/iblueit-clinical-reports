@@ -73,6 +73,14 @@ const BLOCK = {
 
 const DEVICE_OPTIONS = ["Pitaco", "Manovacuômetro", "Cinta"];
 
+// Pacient.capacities<Sufixo> usa nomes curtos que não são iguais ao valor de
+// "device" enviado pela API (ver Validators.js) — Manovacuômetro -> Mano.
+const DEVICE_CAPACITIES_SUFFIX = {
+  Pitaco: "Pitaco",
+  Manovacuômetro: "Mano",
+  Cinta: "Cinta",
+};
+
 // Só métricas com série temporal real por sessão (plataformoverviews) são avaliáveis
 // como tendência hoje — CGc/FR/PEmax/PImax ficam fora até terem essa granularidade.
 const ALERT_METRIC_OPTIONS = [
@@ -565,8 +573,8 @@ const ClinicalReport = () => {
                   Frequência Respiratória (FR) · perfil do paciente
                 </Typography>
                 <Typography sx={{ fontSize: 22, fontWeight: "bold", color: "#e65100" }}>
-                  {pacientProfile && pacientProfile["capacities" + device]
-                    ? pacientProfile["capacities" + device].respiratoryRate + " rpm"
+                  {pacientProfile && pacientProfile["capacities" + DEVICE_CAPACITIES_SUFFIX[device]]
+                    ? pacientProfile["capacities" + DEVICE_CAPACITIES_SUFFIX[device]].respiratoryRate + " rpm"
                     : "—"}
                 </Typography>
                 <Typography sx={{ fontSize: 12, color: "#9e9e9e", mt: 0.5 }}>

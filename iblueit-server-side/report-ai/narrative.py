@@ -200,7 +200,26 @@ Responda em JSON com as chaves: resumoSessao (2-3 parágrafos), analiseComparati
     )
 
     import json as _json
-    parsed = _json.loads(response.content[0].text)
+    try:
+        parsed = _json.loads(response.content[0].text)
+    except ValueError:
+        # Modelo não respondeu em JSON puro — cai pro template determinístico
+        # em vez de estourar erro genérico lá no Node.
+        session_count = payload.get("sessionCount", 0)
+        resumo = _build_resumo(device, period, session_count, current_metrics)
+        analise = _build_analise_comparativa(current_metrics, previous_metrics)
+        if is_first_report:
+            analise = (
+                "Esta é a sessão de referência inicial do paciente — ainda não há "
+                "período anterior para comparação."
+            )
+        return {
+            "resumoSessao": resumo,
+            "analiseComparativa": analise,
+            "avisoRevisao": AVISO_REVISAO,
+            "dadosBrutos": _build_dados_brutos(current_metrics, metric_sources),
+            "generatedBy": "template",
+        }
 
     return {
         "resumoSessao": parsed.get("resumoSessao"),

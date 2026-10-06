@@ -1,10 +1,14 @@
 module.exports = async function (context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
-    mongoose.connect(DATABASE);
+    if (mongoose.connection.readyState === 0) {
+        mongoose.connect(DATABASE);
+    }
     mongoose.Promise = global.Promise;
 
+    require('../shared/UserAccount');
     require('../shared/ClinicalReport');
+    const UserAccountModel = mongoose.model('UserAccount');
     const ClinicalReportModel = mongoose.model('ClinicalReport');
 
     const utils = require('../shared/utils');
@@ -12,6 +16,17 @@ module.exports = async function (context, req) {
     const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
     if (!isVerifiedGameToken) {
         context.res = { status: 403, body: utils.createResponse(false, false, "Chave de acesso inválida.", null, 1) };
+        context.done();
+        return;
+    }
+
+    // --- RN01: apenas Administrator/Therapist pode consultar o histórico clínico ---
+    const requestingUser = await UserAccountModel.findOne({ "gameToken.token": req.headers.gametoken });
+    if (!requestingUser || !["Administrator", "Therapist"].includes(requestingUser.role)) {
+        context.res = {
+            status: 403,
+            body: utils.createResponse(false, false, "Apenas profissionais autenticados podem consultar relatórios clínicos.", null, 1),
+        };
         context.done();
         return;
     }
@@ -26,12 +41,9 @@ module.exports = async function (context, req) {
     const filter = { pacientId, archived: false };
     if (req.query.dataIni) {
         filter.created_at = { $gte: new Date(`${req.query.dataIni} 00:00:00:000`) };
-    }
-    if (req.query.dataIni && req.query.dataFim) {
-        filter.created_at = {
-            $gte: new Date(`${req.query.dataIni} 00:00:00:000`),
-            $lte: new Date(`${req.query.dataFim} 23:59:59:999`),
-        };
+        if (req.query.dataFim) {
+            filter.created_at.$lte = new Date(`${req.query.dataFim} 23:59:59:999`);
+        }
     }
 
     try {
