@@ -20,41 +20,47 @@ module.exports = async function (context, req) {
         return;
     }
 
-    // --- RN01: apenas Administrator/Therapist pode consultar o histórico clínico ---
+    // --- RN01: apenas Administrator/Therapist pode arquivar relatórios ---
     const requestingUser = await UserAccountModel.findOne({ "gameToken.token": req.headers.gametoken });
     if (!requestingUser || !["Administrator", "Therapist"].includes(requestingUser.role)) {
         context.res = {
             status: 403,
-            body: utils.createResponse(false, false, "Apenas profissionais autenticados podem consultar relatórios clínicos.", null, 1),
+            body: utils.createResponse(false, false, "Apenas profissionais autenticados podem arquivar relatórios clínicos.", null, 1),
         };
         context.done();
         return;
     }
 
     const pacientId = req.params.pacientId;
-    if (!pacientId) {
+    const reportId = req.params.reportId;
+    if (!pacientId || !reportId) {
         context.res = { status: 400, body: utils.createResponse(false, true, "Parâmetros de consulta inexistentes.", null, 300) };
         context.done();
         return;
     }
 
-    const filter = { pacientId, archived: false };
-    if (req.query.dataIni) {
-        filter.created_at = { $gte: new Date(`${req.query.dataIni} 00:00:00:000`) };
-        if (req.query.dataFim) {
-            filter.created_at.$lte = new Date(`${req.query.dataFim} 23:59:59:999`);
-        }
-    }
-
     try {
-        // RF11: histórico completo, mais recente primeiro
-        const reports = await ClinicalReportModel.find(filter).sort({ created_at: -1 });
+        // --- RN05: histórico nunca é excluído, apenas arquivado ---
+        const report = await ClinicalReportModel.findOneAndUpdate(
+            { _id: reportId, pacientId },
+            { archived: true },
+            { new: true }
+        );
+
+        if (!report) {
+            context.res = { status: 404, body: utils.createResponse(false, true, "Relatório não encontrado para este paciente.", null, null) };
+            context.done();
+            return;
+        }
+
+        context.log(`[AUDIT] ClinicalReport ${report._id} arquivado por usuário ${requestingUser._id} em ${new Date().toISOString()}`);
+
         context.res = {
             status: 200,
-            body: utils.createResponse(true, true, "Consulta realizada com sucesso.", reports, null),
+            body: utils.createResponse(true, true, "Relatório arquivado com sucesso.", report, null),
         };
     } catch (err) {
-        context.log("[GetClinicalReports] - ERROR: ", err);
+        context.log("[ArchiveClinicalReport] - ERROR: ", err);
         context.res = { status: 500, body: utils.createResponse(false, true, "Ocorreu um erro interno ao realizar a operação.", null, 0) };
     }
 

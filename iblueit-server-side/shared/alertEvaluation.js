@@ -40,14 +40,14 @@ function evaluatePercentDrop(sessionsDesc, field, triggerValue) {
     return pctChange >= triggerValue;
 }
 
-function evaluateBelowValue(sessionsDesc, field, triggerValue) {
+  function evaluateBelowValue(sessionsDesc, field, triggerValue) {
     if (!sessionsDesc.length) return false;
     const latest = sessionsDesc[0];
     if (latest[field] == null) return false;
     return latest[field] < triggerValue;
-}
+  }
 
-async function evaluateAlerts(pacientId, mongoose) {
+  async function evaluateAlerts(pacientId, device, mongoose) {
     require('./AlertCriteria');
     require('./PlataformOverview');
     const AlertCriteriaModel = mongoose.model('AlertCriteria');
@@ -69,8 +69,8 @@ async function evaluateAlerts(pacientId, mongoose) {
                 : 2;
 
         const sessionsDesc = await PlataformOverviewModel
-            .find({ pacientId })
-            .sort({ created_at: -1 })
+            .find({ pacientId, gameDevice: device })
+            .sort({ playFinish: -1 })
             .limit(limit);
 
         let matched;
