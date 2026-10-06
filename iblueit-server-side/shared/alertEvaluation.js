@@ -40,7 +40,7 @@ function evaluatePercentDrop(sessionsDesc, field, triggerValue) {
     return pctChange >= triggerValue;
 }
 
-async function evaluateAlerts(pacientId, mongoose) {
+async function evaluateAlerts(pacientId, device, mongoose) {
     require('./AlertCriteria');
     require('./PlataformOverview');
     const AlertCriteriaModel = mongoose.model('AlertCriteria');
@@ -60,7 +60,7 @@ async function evaluateAlerts(pacientId, mongoose) {
             : 2;
 
         const sessionsDesc = await PlataformOverviewModel
-            .find({ pacientId })
+            .find({ pacientId, gameDevice: device })
             .sort({ created_at: -1 })
             .limit(limit);
 
