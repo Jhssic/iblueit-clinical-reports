@@ -61,7 +61,7 @@ async function evaluateAlerts(pacientId, device, mongoose) {
 
         const sessionsDesc = await PlataformOverviewModel
             .find({ pacientId, gameDevice: device })
-            .sort({ created_at: -1 })
+            .sort({ playFinish: -1 })
             .limit(limit);
 
         const matched = criterion.condition === 'Deterioração consecutiva'
