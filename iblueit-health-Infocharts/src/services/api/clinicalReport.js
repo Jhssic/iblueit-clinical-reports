@@ -30,6 +30,17 @@ export const fetchClinicalReportsHistory = async (patientId, { dataIni, dataFim 
   return response.data.data || [];
 };
 
+// ─── RN05 — Arquivar relatório (nunca excluir, só arquivar) ──────────────────────────────
+
+export const archiveClinicalReport = async (patientId, reportId) => {
+  const response = await axios.patch(
+    `${BaseUrl()}/pacients/${patientId}/clinicalreport/${reportId}/archive`,
+    {},
+    { headers: headers() }
+  );
+  return response.data;
+};
+
 // ─── Perfil do paciente (usado como referência de FR na aba Gráficos) ───────────────────
 
 export const fetchPacientProfile = async (patientId) => {
@@ -53,7 +64,7 @@ export const buildPeriodFromPreset = (presetKey, customStart, customEnd) => {
       label: moment(customStart).format("DD/MM") + " – " + moment(customEnd).format("DD/MM"),
     };
   }
-  const preset = PERIOD_PRESETS.find((p) => p.key === presetKey);
+  const preset = PERIOD_PRESETS.find((p) => p.key === presetKey) || PERIOD_PRESETS[0];
   const end = moment().endOf("day");
   const start = moment().subtract(preset.days, "days").startOf("day");
   return {

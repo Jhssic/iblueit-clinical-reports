@@ -14,6 +14,14 @@
  * alternativo FA02 (dados parcialmente ausentes) do RFC.
  */
 
+// Pacient.capacities<Sufixo> usa nomes curtos que não são iguais ao valor de
+// "device" recebido (ver Validators.js) — Manovacuômetro -> Mano.
+const DEVICE_CAPACITIES_SUFFIX = {
+    Pitaco: 'Pitaco',
+    Manovacuômetro: 'Mano',
+    Cinta: 'Cinta',
+};
+
 async function extractMetricsForPeriod({ pacientId, device, start, end }, mongoose) {
     require('./PlataformOverview');
     require('./GameParameter');
@@ -76,7 +84,7 @@ async function extractMetricsForPeriod({ pacientId, device, start, end }, mongoo
     // calibrationValue/calibrationExercise. Usando o perfil de capacidades do
     // paciente (Pacient.capacities<Device>), que é o dado de calibração mais
     // próximo disponível hoje.
-    const capacitiesKey = 'capacities' + device; // ex: capacitiesPitaco
+    const capacitiesKey = 'capacities' + (DEVICE_CAPACITIES_SUFFIX[device] || device); // ex: capacitiesPitaco
     const capacities = pacient ? pacient[capacitiesKey] : null;
 
     const FR = capacities ? capacities.respiratoryRate : null;
@@ -117,4 +125,21 @@ function missingFields({ metrics }) {
     return REQUIRED_METRICS.filter((key) => metrics[key] == null);
 }
 
-module.exports = { extractMetricsForPeriod, hasMinimumData, missingFields, REQUIRED_METRICS };
+// FA02: métricas não obrigatórias que podem faltar sem bloquear a geração do
+// relatório — o sistema prossegue com o que tem e indica o que não pôde ser
+// consultado (ex: CGc sem sessão de gameparameters no período, SpO2min
+// sem fonte de dado no ecossistema atual).
+const OPTIONAL_METRICS = ['DJ', 'PJ', 'CGc', 'SpO2min'];
+
+function missingOptionalFields({ metrics }) {
+    return OPTIONAL_METRICS.filter((key) => metrics[key] == null);
+}
+
+module.exports = {
+    extractMetricsForPeriod,
+    hasMinimumData,
+    missingFields,
+    missingOptionalFields,
+    REQUIRED_METRICS,
+    OPTIONAL_METRICS,
+};

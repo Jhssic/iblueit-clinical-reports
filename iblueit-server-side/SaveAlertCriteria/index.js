@@ -1,7 +1,9 @@
 module.exports = async function (context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
-    mongoose.connect(DATABASE);
+    if (mongoose.connection.readyState === 0) {
+        mongoose.connect(DATABASE);
+    }
     mongoose.Promise = global.Promise;
 
     require('../shared/UserAccount');
