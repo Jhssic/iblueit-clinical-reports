@@ -120,4 +120,21 @@ function missingFields({ metrics }) {
     return REQUIRED_METRICS.filter((key) => metrics[key] == null);
 }
 
-module.exports = { extractMetricsForPeriod, hasMinimumData, missingFields, REQUIRED_METRICS };
+// FA02: métricas não obrigatórias que podem faltar sem bloquear a geração do
+// relatório — o sistema prossegue com o que tem e indica o que não pôde ser
+// consultado (ex: CGc sem sessão de gameparameters no período, SpO2min
+// sem fonte de dado no ecossistema atual).
+const OPTIONAL_METRICS = ['DJ', 'PJ', 'CGc', 'SpO2min'];
+
+function missingOptionalFields({ metrics }) {
+    return OPTIONAL_METRICS.filter((key) => metrics[key] == null);
+}
+
+module.exports = {
+    extractMetricsForPeriod,
+    hasMinimumData,
+    missingFields,
+    missingOptionalFields,
+    REQUIRED_METRICS,
+    OPTIONAL_METRICS,
+};
