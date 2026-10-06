@@ -30,6 +30,7 @@ import HistoryIcon from "@mui/icons-material/History";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import NotificationsIcon from "@mui/icons-material/Notifications";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
+import PersonIcon from "@mui/icons-material/Person";
 import {
   LineChart,
   Line,
@@ -53,6 +54,7 @@ import {
   fetchAlertCriteria,
   saveAlertCriteria,
 } from "../../services/api/clinicalReport";
+import { fetchAll as fetchAllPatients } from "../../services/api/patient";
 
 // ─── Estilos reutilizáveis ────────────────────────────────────────────────────
 
@@ -81,13 +83,42 @@ const ALERT_METRIC_OPTIONS = [
   { code: "EB", label: "EB — Escala de Borg" },
 ];
 const METRIC_LABELS = ALERT_METRIC_OPTIONS.reduce((acc, m) => ({ ...acc, [m.code]: m.label }), {});
-const CONDITION_OPTIONS = ["Deterioração consecutiva", "Queda percentual >"];
+const CONDITION_OPTIONS = ["Deterioração consecutiva", "Queda percentual >", "Abaixo do valor"];
 
 const describeAlert = (a) => {
   const label = METRIC_LABELS[a.metric] || a.metric;
-  return a.condition === "Queda percentual >"
-    ? `${label}: queda percentual maior que ${a.triggerValue}% entre as duas últimas sessões.`
-    : `${label}: deterioração consecutiva em ${a.triggerValue} sessões.`;
+  if (a.condition === "Queda percentual >") {
+    return `${label}: queda percentual maior que ${a.triggerValue}% entre as duas últimas sessões.`;
+  }
+  if (a.condition === "Abaixo do valor") {
+    return `${label}: abaixo de ${a.triggerValue} na última sessão.`;
+  }
+  return `${label}: deterioração consecutiva em ${a.triggerValue} sessões.`;
+};
+
+// ─── Indicador rápido de status do paciente (Estável/Atenção/Crítico) ────────
+// Crítico: algum critério de alerta configurado foi atingido (RF09/RN04).
+// Atenção: sem alerta formal disparado, mas o DJ já caiu mais de 10% em
+// relação ao período anterior — um aviso antecipado antes de virar alerta.
+// Estável: sem alerta e sem queda relevante (ou é a primeira sessão, sem
+// período anterior pra comparar).
+const PATIENT_STATUS = {
+  critico: { label: "Crítico", color: "#c62828", bg: "#fdecea", border: "#c62828" },
+  atencao: { label: "Atenção", color: "#e65100", bg: "#fff3e0", border: "#e65100" },
+  estavel: { label: "Estável", color: "#2e7d32", bg: "#e8f5e9", border: "#2e7d32" },
+};
+
+const getPatientStatus = (report) => {
+  if (!report) return null;
+  if (report.alerts && report.alerts.length > 0) return PATIENT_STATUS.critico;
+
+  const dj = report.currentMetrics?.DJ;
+  const prevDj = report.previousMetrics?.DJ;
+  if (dj != null && prevDj != null && prevDj !== 0) {
+    const pctChange = ((dj - prevDj) / prevDj) * 100;
+    if (pctChange <= -10) return PATIENT_STATUS.atencao;
+  }
+  return PATIENT_STATUS.estavel;
 };
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -124,6 +155,9 @@ const ClinicalReport = () => {
   ]);
   const [savingCriteria, setSavingCriteria] = useState(false);
 
+  // Aba "Pacientes" (RF09 — indicador de alerta por paciente)
+  const [patients, setPatients] = useState([]);
+
   const currentReport = reports.length ? reports[0] : null;
 
   // ── Carrega dados do backend ───────────────────────────────────────────────
@@ -154,6 +188,20 @@ const ClinicalReport = () => {
     }
   };
 
+  const loadPatients = async () => {
+    try {
+      const result = await fetchAllPatients(context);
+      setPatients(result);
+    } catch (err) { }
+  };
+
+  const handleSelectPatient = (patient) => {
+    context.setPatientId(patient.id);
+    context.setPatientName(patient.name);
+    context.setPatientBirthDate(patient.birthDate);
+    setTab(0);
+  };
+
   const loadAll = async () => {
     if (!context.patientId) return;
     setLoading(true);
@@ -169,6 +217,10 @@ const ClinicalReport = () => {
   useEffect(() => {
     loadAll();
   }, [context.patientId]);
+
+  useEffect(() => {
+    loadPatients();
+  }, []);
 
   useEffect(() => {
     if (context.patientId) loadCharts();
@@ -304,6 +356,7 @@ const ClinicalReport = () => {
                 label={"Alertas" + (currentReport && currentReport.alerts.length ? ` (${currentReport.alerts.length})` : "")}
               />
               <Tab icon={<PlayCircleIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Gerar relatório" />
+              <Tab icon={<PersonIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Pacientes" />
             </Tabs>
           </Paper>
 
@@ -616,6 +669,15 @@ const ClinicalReport = () => {
                           {[2, 3, 4, 5, 6].map((n) => (<MenuItem key={n} value={n}>{n} sessões</MenuItem>))}
                         </Select>
                       </FormControl>
+                    ) : c.condition === "Abaixo do valor" ? (
+                      <TextField
+                        size="small"
+                        type="number"
+                        label="Valor limite"
+                        sx={{ minWidth: 160, "& input": { color: "#11192A" } }}
+                        value={c.triggerValue}
+                        onChange={(e) => updateCriteria(idx, "triggerValue", Number(e.target.value))}
+                      />
                     ) : (
                       <TextField
                         size="small"
@@ -710,6 +772,62 @@ const ClinicalReport = () => {
                   </Button>
                 )}
               </Paper>
+            </Box>
+          )}
+
+          {/* ═══ ABA 5 — Pacientes (RF09) ═══ */}
+          {tab === 5 && (
+            <Box>
+              <Typography sx={{ fontSize: 15, fontWeight: "bold", color: "#11192A", mb: 0.5 }}>
+                Lista de pacientes
+              </Typography>
+              <Typography sx={{ fontSize: 13, color: "#9e9e9e", mb: 3 }}>
+                Clique em um paciente para abrir o relatório clínico correspondente.
+              </Typography>
+
+              {!patients.length ? (
+                <Typography sx={{ color: "#9e9e9e", fontSize: 13 }}>Nenhum paciente cadastrado.</Typography>
+              ) : (
+                <TableContainer component={Paper} sx={{ backgroundColor: "white", boxShadow: 2, borderRadius: 2 }}>
+                  <Table>
+                    <TableHead>
+                      <TableRow sx={{ backgroundColor: "#f5f7ff" }}>
+                        <TableCell sx={{ fontWeight: "bold", fontSize: 13, color: "#11192A" }}>Nome</TableCell>
+                        <TableCell sx={{ fontWeight: "bold", fontSize: 13, color: "#11192A" }}>Condição</TableCell>
+                        <TableCell sx={{ fontWeight: "bold", fontSize: 13, color: "#11192A" }}>Status</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {patients.map((p) => (
+                        <TableRow
+                          key={p.id}
+                          hover
+                          selected={p.id === context.patientId}
+                          sx={{ cursor: "pointer" }}
+                          onClick={() => handleSelectPatient(p)}
+                        >
+                          <TableCell sx={{ fontSize: 13, color: "#11192A" }}>{p.name}</TableCell>
+                          <TableCell sx={{ fontSize: 13, color: "#11192A" }}>{p.condition || "—"}</TableCell>
+                          <TableCell>
+                            {(() => {
+                              const status = getPatientStatus(p.latestReport);
+                              return status ? (
+                                <Chip
+                                  size="small"
+                                  label={status.label}
+                                  sx={{ backgroundColor: status.bg, color: status.color, fontWeight: "bold", border: `1px solid ${status.border}`, fontSize: 11 }}
+                                />
+                              ) : (
+                                <Chip size="small" label="Sem dados" sx={{ backgroundColor: "#f5f5f5", color: "#9e9e9e", fontSize: 11 }} />
+                              );
+                            })()}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
             </Box>
           )}
         </>

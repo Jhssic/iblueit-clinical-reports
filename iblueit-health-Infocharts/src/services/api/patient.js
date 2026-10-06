@@ -14,6 +14,8 @@ const fetchAll = async (context) => {
       id: patient._id,
       name: patient.name,
       birthDate: patient.birthday,
+      condition: patient.condition,
+      latestReport: patient.latestReport || null,
     }));
   } catch (error) {
     context.addNotification('error', extractMessage(error, ''));
