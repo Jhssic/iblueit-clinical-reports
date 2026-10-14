@@ -95,7 +95,28 @@ const ALERT_METRIC_OPTIONS = [
   { code: "EB", label: "EB — Escala de Borg" },
 ];
 const METRIC_LABELS = ALERT_METRIC_OPTIONS.reduce((acc, m) => ({ ...acc, [m.code]: m.label }), {});
-const CONDITION_OPTIONS = ["Deterioração consecutiva", "Queda percentual >", "Abaixo do valor"];
+const CONDITION_OPTIONS = ["Deterioração consecutiva", "Queda percentual >", "Abaixo do valor", "Anomalia (IA)"];
+
+// FA02 — métricas que o ecossistema I Blue It simplesmente não tem como medir
+// hoje (ex: SpO2min precisa de um oxímetro, que não existe integrado). Uma
+// métrica nessa lista nunca vai aparecer, não importa o período escolhido —
+// diferente de algo como CGc, que só falta porque não houve sessão daquele
+// tipo no período selecionado (e pode aparecer trocando o período).
+const METRICS_SEM_FONTE_NO_ECOSSISTEMA = ["SpO2min"];
+
+const describeMissingFields = (missingFields) => {
+  if (!missingFields || !missingFields.length) return [];
+  const semFonte = missingFields.filter((f) => METRICS_SEM_FONTE_NO_ECOSSISTEMA.includes(f));
+  const semDadoNoPeriodo = missingFields.filter((f) => !METRICS_SEM_FONTE_NO_ECOSSISTEMA.includes(f));
+  const linhas = [];
+  if (semDadoNoPeriodo.length) {
+    linhas.push(`Sem dado no período selecionado: ${semDadoNoPeriodo.join(", ")} — tente um período diferente.`);
+  }
+  if (semFonte.length) {
+    linhas.push(`Sem fonte de dado no sistema atual: ${semFonte.join(", ")} — nenhum período mostrará esse valor.`);
+  }
+  return linhas;
+};
 
 const describeAlert = (a) => {
   const label = METRIC_LABELS[a.metric] || a.metric;
@@ -104,6 +125,9 @@ const describeAlert = (a) => {
   }
   if (a.condition === "Abaixo do valor") {
     return `${label}: abaixo de ${a.triggerValue} na última sessão.`;
+  }
+  if (a.condition === "Anomalia (IA)") {
+    return `${label}: sessão identificada como anômala pelo modelo de IA (sensibilidade ${a.triggerValue}%).`;
   }
   return `${label}: deterioração consecutiva em ${a.triggerValue} sessões.`;
 };
@@ -518,14 +542,13 @@ const ClinicalReport = () => {
 
       // FA02 — campos opcionais não consultados
       if (currentReport.missingOptionalFields && currentReport.missingOptionalFields.length > 0) {
-        y = pdfAddParagraph(
-          doc,
-          `Campos que não puderam ser consultados neste período: ${currentReport.missingOptionalFields.join(", ")}.`,
-          y,
-          pageWidth,
-          pageHeight,
-          { fontSize: 9, lineHeight: 12, color: PDF_COLORS.gray }
-        );
+        for (const linha of describeMissingFields(currentReport.missingOptionalFields)) {
+          y = pdfAddParagraph(doc, linha, y, pageWidth, pageHeight, {
+            fontSize: 9,
+            lineHeight: 12,
+            color: PDF_COLORS.gray,
+          });
+        }
         y += 10;
       }
 
@@ -867,11 +890,15 @@ const ClinicalReport = () => {
 
               {/* FA02 — campos opcionais que não puderam ser consultados no período */}
               {currentReport.missingOptionalFields && currentReport.missingOptionalFields.length > 0 && (
-                <Paper sx={{ backgroundColor: "#f5f5f5", borderRadius: 2, p: 2, mb: 2.5, display: "flex", alignItems: "center", boxShadow: 1 }}>
-                  <DescriptionIcon sx={{ color: "#9e9e9e", mr: 1.5, fontSize: 18, flexShrink: 0 }} />
-                  <Typography sx={{ color: "#757575", fontSize: 12 }}>
-                    Campos que não puderam ser consultados neste período: {currentReport.missingOptionalFields.join(", ")}.
-                  </Typography>
+                <Paper sx={{ backgroundColor: "#f5f5f5", borderRadius: 2, p: 2, mb: 2.5, display: "flex", alignItems: "flex-start", boxShadow: 1 }}>
+                  <DescriptionIcon sx={{ color: "#9e9e9e", mr: 1.5, mt: 0.2, fontSize: 18, flexShrink: 0 }} />
+                  <Box>
+                    {describeMissingFields(currentReport.missingOptionalFields).map((linha, i) => (
+                      <Typography key={i} sx={{ color: "#757575", fontSize: 12 }}>
+                        {linha}
+                      </Typography>
+                    ))}
+                  </Box>
                 </Paper>
               )}
 
@@ -1129,6 +1156,16 @@ const ClinicalReport = () => {
                         type="number"
                         label="Valor limite"
                         sx={{ minWidth: 160, "& input": { color: "#11192A" } }}
+                        value={c.triggerValue}
+                        onChange={(e) => updateCriteria(idx, "triggerValue", Number(e.target.value))}
+                      />
+                    ) : c.condition === "Anomalia (IA)" ? (
+                      <TextField
+                        size="small"
+                        type="number"
+                        label="Sensibilidade (%)"
+                        helperText="% esperado de sessões anômalas no histórico"
+                        sx={{ minWidth: 220, "& input": { color: "#11192A" } }}
                         value={c.triggerValue}
                         onChange={(e) => updateCriteria(idx, "triggerValue", Number(e.target.value))}
                       />

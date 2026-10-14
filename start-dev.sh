@@ -22,7 +22,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "Subindo report-ai (porta 8000)..."
+echo "Subindo report-ai (porta 8001)..."
 if [ ! -f "$ROOT_DIR/iblueit-server-side/report-ai/venv/bin/activate" ]; then
     echo "ERRO: venv não encontrado em iblueit-server-side/report-ai/venv (ele é local, não vai pro git)."
     echo "Rode primeiro: cd iblueit-server-side/report-ai && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
@@ -31,7 +31,7 @@ fi
 (
     cd "$ROOT_DIR/iblueit-server-side/report-ai" || exit 1
     source venv/bin/activate
-    exec uvicorn main:app --reload --port 8000
+    exec uvicorn main:app --reload --port 8001
 ) > /tmp/report-ai.log 2>&1 &
 PIDS+=($!)
 
@@ -53,7 +53,7 @@ echo ""
 echo "Serviços no ar:"
 echo "  React:      http://localhost:3000/iblueit-health-Infocharts"
 echo "  Function:   http://localhost:7071"
-echo "  report-ai:  http://localhost:8000"
+echo "  report-ai:  http://localhost:8001"
 echo ""
 echo "Logs: /tmp/react.log  /tmp/func.log  /tmp/report-ai.log"
 echo "Pressione Ctrl+C pra parar os três."

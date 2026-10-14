@@ -37,6 +37,22 @@ METRIC_LABELS = {
 }
 
 
+def _format_metrics_for_prompt(metrics):
+    """Formata as métricas com nome completo + unidade (ex: 'EB (Escala de
+    Borg, 0–10): 3.00'), em vez de só a sigla crua — sem isso o LLM já
+    inventou expansões erradas pra sigla (ex: 'EB' virou 'Excesso de Breathe'
+    em vez de 'Escala de Borg'), por nunca ter recebido o nome por extenso."""
+    if not metrics:
+        return "—"
+    linhas = []
+    for key, valor in metrics.items():
+        if valor is None:
+            continue
+        label, unidade = METRIC_LABELS.get(key, (key, ""))
+        linhas.append(f"{key} ({label}, {unidade}): {valor}")
+    return "\n".join(linhas) if linhas else "—"
+
+
 def _pct_change(current, previous):
     if previous is None or previous == 0:
         return None
@@ -140,18 +156,48 @@ _MELHORA_KEYWORDS = ("melhora", "melhorou", "aument", "subiu", "evolu", "progred
 _REDUCAO_KEYWORDS = ("reduç", "reduziu", "queda", "caiu", "piora", "piorou", "diminui", "declín")
 
 
-def _check_coherence(resumo, analise, objective_trends):
+def _check_acronym_expansions(texto, metrics):
+    """Confronta cada sigla mencionada no texto com o nome completo que o
+    próprio modelo atribuiu a ela entre parênteses — pega o caso em que o
+    LLM inventa uma expansão errada (ex: 'EB (Excesso de Breathe)' em vez de
+    'EB (Escala de Borg)'), mesmo quando o prompt já manda o nome certo."""
+    if not texto or not metrics:
+        return []
+
+    avisos = []
+    for key in metrics:
+        label, _ = METRIC_LABELS.get(key, (None, None))
+        if not label:
+            continue
+        padrao = re.compile(rf"\b{re.escape(key)}\b\s*\(([^)]+)\)", re.IGNORECASE)
+        for match in padrao.finditer(texto):
+            expansao = match.group(1).strip()
+            if expansao.lower() != label.lower():
+                avisos.append({
+                    "metrica": key,
+                    "esperado": label,
+                    "trechoSuspeito": match.group(0),
+                })
+    return avisos
+
+
+def _check_coherence(resumo, analise, objective_trends, current_metrics=None):
     """Confronta o texto narrativo gerado pelo LLM com a tendência real das
     métricas (RF05/FA03 — mitigação do risco de alucinação levantado na review
     do PR). Só sinaliza contradições diretas (melhora vs. redução); tendências
     de estabilidade não geram aviso por serem mais ambíguas no texto livre.
+    Também confere se o modelo não inventou o nome por extenso de alguma sigla.
     """
     texto = " ".join(t for t in (resumo, analise) if t)
-    if not texto or not objective_trends:
+    if not texto:
         return []
 
+    avisos = _check_acronym_expansions(texto, current_metrics or {})
+
+    if not objective_trends:
+        return avisos
+
     sentencas = [s.strip() for s in re.split(r"(?<=[.!?])\s+", texto) if s.strip()]
-    avisos = []
 
     for key, tendencia in objective_trends.items():
         if tendencia not in ("melhora", "redução"):
@@ -261,8 +307,16 @@ Dispositivo: {device}
 Período: {period.get('start', '—')} a {period.get('end', '—')}
 Contexto do paciente: {patient_context}
 Primeira sessão do paciente: {is_first_report}
-Métricas do período atual: {current_metrics}
-Métricas do período anterior: {previous_metrics}
+
+Métricas do período atual (sigla, nome completo, unidade e valor):
+{_format_metrics_for_prompt(current_metrics)}
+
+Métricas do período anterior (mesmo formato, ou "—" se não houver):
+{_format_metrics_for_prompt(previous_metrics) if previous_metrics else "—"}
+
+Use sempre o nome completo de cada métrica entre parênteses na primeira menção
+(ex: "EB (Escala de Borg)"), exatamente como informado acima — não invente ou
+deduza o significado de nenhuma sigla.
 
 Responda em JSON com as chaves: resumoSessao (2-3 parágrafos), analiseComparativa
 (comparação com o período anterior, ou null se for a primeira sessão)."""
@@ -336,7 +390,7 @@ Responda em JSON com as chaves: resumoSessao (2-3 parágrafos), analiseComparati
     # RF05/FA03 — mitigação do risco de alucinação: confronta o texto gerado
     # com a tendência real das métricas antes de exibir (ver review do PR).
     objective_trends = _objective_trends(current_metrics, previous_metrics)
-    avisos_coerencia = _check_coherence(resumo_llm, analise_llm, objective_trends)
+    avisos_coerencia = _check_coherence(resumo_llm, analise_llm, objective_trends, current_metrics)
 
     return {
         "resumoSessao": resumo_llm,
