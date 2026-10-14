@@ -94,4 +94,12 @@ function evaluatePercentDrop(sessionsDesc, field, triggerValue) {
     return triggered;
 }
 
-module.exports = { evaluateAlerts, METRIC_FIELD_MAP, DEFAULT_CRITERIA };
+module.exports = {
+    evaluateAlerts,
+    METRIC_FIELD_MAP,
+    DEFAULT_CRITERIA,
+    // Exportadas só pra teste unitário (evaluateAlerts é a única usada fora deste módulo).
+    evaluateConsecutiveDrop,
+    evaluatePercentDrop,
+    evaluateBelowValue,
+};
