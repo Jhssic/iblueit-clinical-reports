@@ -324,7 +324,7 @@ const ClinicalReport = () => {
     try {
       await archiveClinicalReport(context.patientId, reportId);
       setReports(reports.filter((r) => r._id !== reportId));
-      loadPatients();
+      void loadPatients();
       context.addNotification("success", "Relatório arquivado.");
     } catch (err) {
       context.addNotification("error", "Não foi possível arquivar o relatório. Tente novamente.");
@@ -580,7 +580,7 @@ const ClinicalReport = () => {
   }, [context.patientId]);
 
   useEffect(() => {
-    loadPatients();
+    void loadPatients();
   }, []);
 
   useEffect(() => {
@@ -609,7 +609,7 @@ const ClinicalReport = () => {
 
       context.addNotification("success", "Relatório clínico gerado com sucesso.");
       await loadHistory();
-      loadPatients();
+      void loadPatients();
       setTab(0);
     } catch (err) {
       // FA03 — falha na API de IA. Mantém período/dispositivo selecionados para nova tentativa.
