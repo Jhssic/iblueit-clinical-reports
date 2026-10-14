@@ -8,6 +8,13 @@
  * como tendência e ficam fora do escopo desta função por enquanto.
  */
 
+const axios = require('axios');
+
+// RF10 — quantas sessões buscar pro histórico treinar o modelo de anomalia
+// (Isolation Forest, em report-ai). Mais sessões = modelo mais confiável;
+// anomaly_detection.py recusa a avaliação se vierem menos que MIN_SESSIONS.
+const ANOMALY_HISTORY_LIMIT = 30;
+
 const METRIC_FIELD_MAP = {
     DJ: 'scoreRatio',
     PJ: 'score',
@@ -47,6 +54,29 @@ function evaluatePercentDrop(sessionsDesc, field, triggerValue) {
     return latest[field] < triggerValue;
   }
 
+  // RF10 — detecção de anomalia via Isolation Forest (report-ai), treinado no
+  // histórico do próprio paciente. `triggerValue` aqui é a "sensibilidade"
+  // (0-100, equivalente ao parâmetro contamination do modelo em percentual).
+  // Falha de rede/serviço indisponível ou histórico insuficiente não dispara
+  // alerta (fail-safe) — nunca derruba a geração do relatório por causa disso.
+  async function evaluateAnomalyIA(sessionsDesc, field, triggerValue) {
+    const values = sessionsDesc
+        .slice()
+        .reverse()
+        .map((s) => s[field])
+        .filter((v) => v != null);
+
+    try {
+        const res = await axios.post(`${process.env.URL_API_IA}/detect-anomaly`, {
+            values,
+            contamination: Math.min(Math.max(triggerValue, 1), 50) / 100,
+        }, { timeout: 10000 });
+        return !!(res.data && res.data.evaluated && res.data.isAnomaly);
+    } catch (err) {
+        return false;
+    }
+  }
+
   async function evaluateAlerts(pacientId, device, mongoose) {
     require('./AlertCriteria');
     require('./PlataformOverview');
@@ -66,7 +96,9 @@ function evaluatePercentDrop(sessionsDesc, field, triggerValue) {
             ? criterion.triggerValue
             : criterion.condition === 'Abaixo do valor'
                 ? 1
-                : 2;
+                : criterion.condition === 'Anomalia (IA)'
+                    ? ANOMALY_HISTORY_LIMIT
+                    : 2;
 
         const sessionsDesc = await PlataformOverviewModel
             .find({ pacientId, gameDevice: device })
@@ -78,6 +110,8 @@ function evaluatePercentDrop(sessionsDesc, field, triggerValue) {
             matched = evaluateConsecutiveDrop(sessionsDesc, field, criterion.triggerValue);
         } else if (criterion.condition === 'Abaixo do valor') {
             matched = evaluateBelowValue(sessionsDesc, field, criterion.triggerValue);
+        } else if (criterion.condition === 'Anomalia (IA)') {
+            matched = await evaluateAnomalyIA(sessionsDesc, field, criterion.triggerValue);
         } else {
             matched = evaluatePercentDrop(sessionsDesc, field, criterion.triggerValue);
         }

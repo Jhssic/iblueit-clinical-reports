@@ -95,7 +95,7 @@ const ALERT_METRIC_OPTIONS = [
   { code: "EB", label: "EB — Escala de Borg" },
 ];
 const METRIC_LABELS = ALERT_METRIC_OPTIONS.reduce((acc, m) => ({ ...acc, [m.code]: m.label }), {});
-const CONDITION_OPTIONS = ["Deterioração consecutiva", "Queda percentual >", "Abaixo do valor"];
+const CONDITION_OPTIONS = ["Deterioração consecutiva", "Queda percentual >", "Abaixo do valor", "Anomalia (IA)"];
 
 const describeAlert = (a) => {
   const label = METRIC_LABELS[a.metric] || a.metric;
@@ -104,6 +104,9 @@ const describeAlert = (a) => {
   }
   if (a.condition === "Abaixo do valor") {
     return `${label}: abaixo de ${a.triggerValue} na última sessão.`;
+  }
+  if (a.condition === "Anomalia (IA)") {
+    return `${label}: sessão identificada como anômala pelo modelo de IA (sensibilidade ${a.triggerValue}%).`;
   }
   return `${label}: deterioração consecutiva em ${a.triggerValue} sessões.`;
 };
@@ -1129,6 +1132,16 @@ const ClinicalReport = () => {
                         type="number"
                         label="Valor limite"
                         sx={{ minWidth: 160, "& input": { color: "#11192A" } }}
+                        value={c.triggerValue}
+                        onChange={(e) => updateCriteria(idx, "triggerValue", Number(e.target.value))}
+                      />
+                    ) : c.condition === "Anomalia (IA)" ? (
+                      <TextField
+                        size="small"
+                        type="number"
+                        label="Sensibilidade (%)"
+                        helperText="% esperado de sessões anômalas no histórico"
+                        sx={{ minWidth: 220, "& input": { color: "#11192A" } }}
                         value={c.triggerValue}
                         onChange={(e) => updateCriteria(idx, "triggerValue", Number(e.target.value))}
                       />
