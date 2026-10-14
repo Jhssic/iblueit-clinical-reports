@@ -19,10 +19,11 @@ export const generateClinicalReport = async (patientId, { device, period }) => {
 
 // ─── RF11 — Histórico de relatórios (Azure Function GetClinicalReports) ──────────────────
 
-export const fetchClinicalReportsHistory = async (patientId, { dataIni, dataFim } = {}) => {
+export const fetchClinicalReportsHistory = async (patientId, { dataIni, dataFim, archived } = {}) => {
   const params = new URLSearchParams();
   if (dataIni) params.set("dataIni", dataIni);
   if (dataFim) params.set("dataFim", dataFim);
+  if (archived) params.set("archived", "true");
   const query = params.toString() ? `?${params.toString()}` : "";
   const response = await axios.get(`${BaseUrl()}/pacients/${patientId}/clinicalreport${query}`, {
     headers: headers(),
@@ -36,6 +37,15 @@ export const archiveClinicalReport = async (patientId, reportId) => {
   const response = await axios.patch(
     `${BaseUrl()}/pacients/${patientId}/clinicalreport/${reportId}/archive`,
     {},
+    { headers: headers() }
+  );
+  return response.data;
+};
+
+// LGPD Art. 18 — exclusão definitiva (só permitida sobre um relatório já arquivado).
+export const deleteClinicalReport = async (patientId, reportId) => {
+  const response = await axios.delete(
+    `${BaseUrl()}/pacients/${patientId}/clinicalreport/${reportId}`,
     { headers: headers() }
   );
   return response.data;

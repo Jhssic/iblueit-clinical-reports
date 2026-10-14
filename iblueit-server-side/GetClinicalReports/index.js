@@ -38,7 +38,7 @@ module.exports = async function (context, req) {
         return;
     }
 
-    const filter = { pacientId, archived: false };
+    const filter = { pacientId, archived: req.query.archived === 'true' };
     if (req.query.dataIni) {
         filter.created_at = { $gte: new Date(`${req.query.dataIni} 00:00:00:000`) };
         if (req.query.dataFim) {
