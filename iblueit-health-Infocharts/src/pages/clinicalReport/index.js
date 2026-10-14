@@ -133,31 +133,6 @@ const getPatientStatus = (report) => {
   return PATIENT_STATUS.estavel;
 };
 
-// ─── Indicador rápido de status do paciente (Estável/Atenção/Crítico) ────────
-// Crítico: algum critério de alerta configurado foi atingido (RF09/RN04).
-// Atenção: sem alerta formal disparado, mas o DJ já caiu mais de 10% em
-// relação ao período anterior — um aviso antecipado antes de virar alerta.
-// Estável: sem alerta e sem queda relevante (ou é a primeira sessão, sem
-// período anterior pra comparar).
-const PATIENT_STATUS = {
-  critico: { label: "Crítico", color: "#c62828", bg: "#fdecea", border: "#c62828" },
-  atencao: { label: "Atenção", color: "#e65100", bg: "#fff3e0", border: "#e65100" },
-  estavel: { label: "Estável", color: "#2e7d32", bg: "#e8f5e9", border: "#2e7d32" },
-};
-
-const getPatientStatus = (report) => {
-  if (!report) return null;
-  if (report.alerts && report.alerts.length > 0) return PATIENT_STATUS.critico;
-
-  const dj = report.currentMetrics?.DJ;
-  const prevDj = report.previousMetrics?.DJ;
-  if (dj != null && prevDj != null && prevDj !== 0) {
-    const pctChange = ((dj - prevDj) / prevDj) * 100;
-    if (pctChange <= -10) return PATIENT_STATUS.atencao;
-  }
-  return PATIENT_STATUS.estavel;
-};
-
 // ─── RF08 — montagem do PDF nativo do relatório clínico ──────────────────────
 // Layout próprio (texto real, não captura de tela): título, dados do paciente,
 // alertas, resumo/análise, dados brutos em tabela — com paginação automática.
@@ -342,11 +317,14 @@ const ClinicalReport = () => {
     context.setPatientName(patient.name);
     context.setPatientBirthDate(patient.birthDate);
     setTab(0);
+  };
+
   // RN05 — arquiva um relatório do histórico (nunca exclui).
   const handleArchiveReport = async (reportId) => {
     try {
       await archiveClinicalReport(context.patientId, reportId);
       setReports(reports.filter((r) => r._id !== reportId));
+      loadPatients();
       context.addNotification("success", "Relatório arquivado.");
     } catch (err) {
       context.addNotification("error", "Não foi possível arquivar o relatório. Tente novamente.");
@@ -631,6 +609,7 @@ const ClinicalReport = () => {
 
       context.addNotification("success", "Relatório clínico gerado com sucesso.");
       await loadHistory();
+      loadPatients();
       setTab(0);
     } catch (err) {
       // FA03 — falha na API de IA. Mantém período/dispositivo selecionados para nova tentativa.
