@@ -210,7 +210,7 @@ exports.saveAlertCriteriaValidator = (saveAlertCriteriaReq) => {
     let rules = {
         criteria: 'array',
         'criteria.*.metric': ['required', { 'in': ['DJ', 'PJ', 'EB'] }],
-        'criteria.*.condition': ['required', { 'in': ['Deterioração consecutiva', 'Queda percentual >'] }],
+        'criteria.*.condition': ['required', { 'in': ['Deterioração consecutiva', 'Queda percentual >', 'Abaixo do valor'] }],
         'criteria.*.triggerValue': 'required|numeric',
     };
 

@@ -40,7 +40,14 @@ function evaluatePercentDrop(sessionsDesc, field, triggerValue) {
     return pctChange >= triggerValue;
 }
 
-async function evaluateAlerts(pacientId, device, mongoose) {
+  function evaluateBelowValue(sessionsDesc, field, triggerValue) {
+    if (!sessionsDesc.length) return false;
+    const latest = sessionsDesc[0];
+    if (latest[field] == null) return false;
+    return latest[field] < triggerValue;
+  }
+
+  async function evaluateAlerts(pacientId, device, mongoose) {
     require('./AlertCriteria');
     require('./PlataformOverview');
     const AlertCriteriaModel = mongoose.model('AlertCriteria');
@@ -57,16 +64,23 @@ async function evaluateAlerts(pacientId, device, mongoose) {
 
         const limit = criterion.condition === 'Deterioração consecutiva'
             ? criterion.triggerValue
-            : 2;
+            : criterion.condition === 'Abaixo do valor'
+                ? 1
+                : 2;
 
         const sessionsDesc = await PlataformOverviewModel
             .find({ pacientId, gameDevice: device })
             .sort({ playFinish: -1 })
             .limit(limit);
 
-        const matched = criterion.condition === 'Deterioração consecutiva'
-            ? evaluateConsecutiveDrop(sessionsDesc, field, criterion.triggerValue)
-            : evaluatePercentDrop(sessionsDesc, field, criterion.triggerValue);
+        let matched;
+        if (criterion.condition === 'Deterioração consecutiva') {
+            matched = evaluateConsecutiveDrop(sessionsDesc, field, criterion.triggerValue);
+        } else if (criterion.condition === 'Abaixo do valor') {
+            matched = evaluateBelowValue(sessionsDesc, field, criterion.triggerValue);
+        } else {
+            matched = evaluatePercentDrop(sessionsDesc, field, criterion.triggerValue);
+        }
 
         if (matched) {
             triggered.push({

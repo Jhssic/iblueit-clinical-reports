@@ -93,7 +93,39 @@ module.exports = async function (context, req) {
             ],
             as: 'playSessions'
         });
-    
+
+        // RF09: indicador de status (Estável/Atenção/Crítico) por paciente, com
+        // base no relatório clínico (não arquivado) mais recente — mesmos dados
+        // que alimentam o getPatientStatus() da tela de Relatório Clínico.
+        aggregate.append({
+            $lookup: {
+                from: 'clinicalreports',
+                'let': { id: { $toString: '$_id' } },
+                pipeline: [
+                    {
+                        $match: {
+                            $expr: {
+                                $and: [
+                                    { $eq: ['$pacientId', '$$id'] },
+                                    { $eq: ['$archived', false] },
+                                ]
+                            }
+                        }
+                    },
+                    { $sort: { created_at: -1 } },
+                    { $limit: 1 },
+                    { $project: { alerts: 1, currentMetrics: 1, previousMetrics: 1 } },
+                ],
+                as: 'latestClinicalReport'
+            }
+        });
+        aggregate.append({
+            $addFields: {
+                latestReport: { $arrayElemAt: ['$latestClinicalReport', 0] }
+            }
+        });
+        aggregate.append({ $project: { latestClinicalReport: 0 } });
+
 
     if (req.query.limit)
         aggregate.limit(parseInt(req.query.limit))
