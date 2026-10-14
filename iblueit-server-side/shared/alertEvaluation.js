@@ -59,7 +59,7 @@ function evaluatePercentDrop(sessionsDesc, field, triggerValue) {
   // (0-100, equivalente ao parâmetro contamination do modelo em percentual).
   // Falha de rede/serviço indisponível ou histórico insuficiente não dispara
   // alerta (fail-safe) — nunca derruba a geração do relatório por causa disso.
-  async function evaluateAnomalyIA(sessionsDesc, field, triggerValue) {
+  async function evaluateAnomalyIA(sessionsDesc, field, triggerValue, context) {
     const values = sessionsDesc
         .slice()
         .reverse()
@@ -73,11 +73,16 @@ function evaluatePercentDrop(sessionsDesc, field, triggerValue) {
         }, { timeout: 10000 });
         return !!(res.data && res.data.evaluated && res.data.isAnomaly);
     } catch (err) {
+        // Serviço de IA fora do ar ou lento — não derruba a geração do
+        // relatório (fail-safe), mas precisa ficar visível em algum lugar,
+        // senão um alerta clínico deixa de disparar sem ninguém perceber.
+        const log = (context && context.log) || console.error;
+        log(`[ANOMALY_IA] - ERROR: falha ao chamar ${process.env.URL_API_IA}/detect-anomaly — ${err.message}`);
         return false;
     }
   }
 
-  async function evaluateAlerts(pacientId, device, mongoose) {
+  async function evaluateAlerts(pacientId, device, mongoose, context) {
     require('./AlertCriteria');
     require('./PlataformOverview');
     const AlertCriteriaModel = mongoose.model('AlertCriteria');
@@ -111,7 +116,7 @@ function evaluatePercentDrop(sessionsDesc, field, triggerValue) {
         } else if (criterion.condition === 'Abaixo do valor') {
             matched = evaluateBelowValue(sessionsDesc, field, criterion.triggerValue);
         } else if (criterion.condition === 'Anomalia (IA)') {
-            matched = await evaluateAnomalyIA(sessionsDesc, field, criterion.triggerValue);
+            matched = await evaluateAnomalyIA(sessionsDesc, field, criterion.triggerValue, context);
         } else {
             matched = evaluatePercentDrop(sessionsDesc, field, criterion.triggerValue);
         }
