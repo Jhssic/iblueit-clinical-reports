@@ -656,14 +656,14 @@ const ClinicalReport = () => {
   const formatDDMM = (date) =>
     `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
 
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
   const alertDates = new Set();
   reports.forEach((r) => {
     if (!r.alerts || !r.alerts.length || !r.period) return;
-    const cursor = new Date(r.period.start);
-    const end = new Date(r.period.end);
-    while (cursor <= end) {
-      alertDates.add(formatDDMM(cursor));
-      cursor.setDate(cursor.getDate() + 1);
+    const startTime = new Date(r.period.start).getTime();
+    const endTime = new Date(r.period.end).getTime();
+    for (let t = startTime; t <= endTime; t += ONE_DAY_MS) {
+      alertDates.add(formatDDMM(new Date(t)));
     }
   });
 
@@ -1099,7 +1099,7 @@ const ClinicalReport = () => {
                 <Paper key={idx} sx={{ backgroundColor: "white", borderRadius: 2, p: 3, mb: 2, boxShadow: 2 }}>
                   <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
                     <Typography sx={{ fontWeight: "bold", color: "#11192A", fontSize: 14 }}>Critério {idx + 1}</Typography>
-                    <IconButton size="small" onClick={() => setCriteria(criteria.filter((_, i) => i !== idx))} sx={{ color: "#c62828" }}>
+                    <IconButton size="small" aria-label={`Remover critério ${idx + 1}`} onClick={() => setCriteria(criteria.filter((_, i) => i !== idx))} sx={{ color: "#c62828" }}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Box>
