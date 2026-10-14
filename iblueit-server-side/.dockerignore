@@ -1,0 +1,21 @@
+# Segredos locais — nunca devem entrar na imagem Docker
+local.settings.json
+.env
+.env.*
+report-ai/.env
+
+# Dependências e artefatos — reinstalados/gerados dentro do build
+node_modules
+report-ai/venv
+report-ai/__pycache__
+report-ai/.pytest_cache
+bin
+obj
+
+# Controle de versão e metadados do editor
+.git
+.gitignore
+.vscode
+
+# Logs
+*.log
