@@ -6,30 +6,17 @@ module.exports = async function (context, req) {
     }
     mongoose.Promise = global.Promise;
 
-    require('../shared/UserAccount');
     require('../shared/ClinicalReport');
-    const UserAccountModel = mongoose.model('UserAccount');
     const ClinicalReportModel = mongoose.model('ClinicalReport');
 
     const utils = require('../shared/utils');
 
-    const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
-    if (!isVerifiedGameToken) {
-        context.res = { status: 403, body: utils.createResponse(false, false, "Chave de acesso inválida.", null, 1) };
-        context.done();
-        return;
-    }
-
     // --- RN01: apenas Administrator/Therapist pode arquivar relatórios ---
-    const requestingUser = await UserAccountModel.findOne({ "gameToken.token": req.headers.gametoken });
-    if (!requestingUser || !["Administrator", "Therapist"].includes(requestingUser.role)) {
-        context.res = {
-            status: 403,
-            body: utils.createResponse(false, false, "Apenas profissionais autenticados podem arquivar relatórios clínicos.", null, 1),
-        };
-        context.done();
-        return;
-    }
+    const requestingUser = await utils.requireClinicalStaff(
+        context, req, mongoose,
+        "Apenas profissionais autenticados podem arquivar relatórios clínicos."
+    );
+    if (!requestingUser) return;
 
     const pacientId = req.params.pacientId;
     const reportId = req.params.reportId;

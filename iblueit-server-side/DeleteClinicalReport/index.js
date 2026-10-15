@@ -6,32 +6,19 @@ module.exports = async function (context, req) {
     }
     mongoose.Promise = global.Promise;
 
-    require('../shared/UserAccount');
     require('../shared/ClinicalReport');
     require('../shared/AlertRecord');
-    const UserAccountModel = mongoose.model('UserAccount');
     const ClinicalReportModel = mongoose.model('ClinicalReport');
     const AlertRecordModel = mongoose.model('AlertRecord');
 
     const utils = require('../shared/utils');
 
-    const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
-    if (!isVerifiedGameToken) {
-        context.res = { status: 403, body: utils.createResponse(false, false, "Chave de acesso inválida.", null, 1) };
-        context.done();
-        return;
-    }
-
     // --- RN01: apenas Administrator/Therapist pode excluir definitivamente ---
-    const requestingUser = await UserAccountModel.findOne({ "gameToken.token": req.headers.gametoken });
-    if (!requestingUser || !["Administrator", "Therapist"].includes(requestingUser.role)) {
-        context.res = {
-            status: 403,
-            body: utils.createResponse(false, false, "Apenas profissionais autenticados podem excluir relatórios clínicos.", null, 1),
-        };
-        context.done();
-        return;
-    }
+    const requestingUser = await utils.requireClinicalStaff(
+        context, req, mongoose,
+        "Apenas profissionais autenticados podem excluir relatórios clínicos."
+    );
+    if (!requestingUser) return;
 
     const pacientId = req.params.pacientId;
     const reportId = req.params.reportId;
