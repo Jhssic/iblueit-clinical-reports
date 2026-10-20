@@ -30,7 +30,7 @@
     "recharts": "^2.1.9",
     "web-vitals": "^2.1.4"
   },
-  "homepage": "https://udesc-larva.github.io/iblueit-health-Infocharts",
+  "homepage": ".",
   "scripts": {
     "start": "react-scripts start",
     "predeploy": "npm run build",
