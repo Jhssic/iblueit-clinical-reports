@@ -158,7 +158,7 @@ module.exports = async function (context, req) {
         }
 
         // --- RF09/RF10/RN04: avalia critérios configurados (ou o padrão, se nenhum existir) ---
-        const alertsTriggered = await evaluateAlerts(pacientId, device, mongoose);
+        const alertsTriggered = await evaluateAlerts(pacientId, device, mongoose, context);
 
         const savedReport = await new ClinicalReportModel({
             pacientId,
