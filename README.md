@@ -1,7 +1,7 @@
 # Geração Automatizada de Relatórios Clínicos Narrativos para Reabilitação Respiratória a partir de Logs do Exergame I Blue It
 
 **CATÓLICA SC — Engenharia de Software**
-**RFC — Request for Comments · Versão 1.2**
+**RFC — Request for Comments · Versão 1.3**
 
 | Campo | Valor |
 | --- | --- |
@@ -9,7 +9,7 @@
 | **Linha de Projeto** | IA — Projetos com Inteligência Artificial |
 | **Autor** | Jhessica Maria Alves Fernandes |
 | **Data da Proposta** | 12/04/2026 |
-| **Versão** | 1.2 — Junho/2026 |
+| **Versão** | 1.3 — Outubro/2026 |
 
 ---
 
@@ -322,6 +322,47 @@ A nova feature de Relatório Clínico é implementada **dentro do ecossistema ex
 | Banco de dados | MongoDB Atlas | Cluster-iblueit-v5 | Collections existentes consultadas (sem criação de novas collections) |
 | API de IA | `URL_API_IA` (local.settings.json) | Python FastAPI | Nova API Python que recebe métricas e retorna texto narrativo via LLM |
 
+**Diagrama C4 (Contexto + Contêineres):**
+
+```mermaid
+C4Context
+    title Contexto — Geração de Relatório Clínico (I Blue It)
+
+    Person(fisio, "Fisioterapeuta", "Consulta e gera relatórios clínicos narrativos")
+    Person(paciente, "Paciente", "Realiza sessões de reabilitação no exergame")
+
+    System(iblueit, "I Blue It 5.0", "Plataforma de exergame + Health InfoCharts (React + Azure Functions)")
+    System_Ext(groq, "Groq API", "LLM de terceiros — gera o texto narrativo clínico")
+    SystemDb_Ext(mongo, "MongoDB Atlas", "Collections do ecossistema I Blue It")
+
+    Rel(paciente, iblueit, "Joga sessões de reabilitação")
+    Rel(fisio, iblueit, "Gera e consulta relatórios clínicos")
+    Rel(iblueit, mongo, "Lê métricas de sessão")
+    Rel(iblueit, groq, "Envia métricas anonimizadas, recebe texto narrativo")
+```
+
+```mermaid
+C4Container
+    title Contêineres — Módulo de Relatório Clínico
+
+    Person(fisio, "Fisioterapeuta")
+
+    Container_Boundary(iblueit, "I Blue It 5.0") {
+        Container(frontend, "iblueit-health-Infocharts", "React", "Telas de Relatório Clínico — abas, gráficos, PDF")
+        Container(backend, "iblueit-server-side", "Node.js / Azure Functions", "GenerateClinicalReport, alertas, arquivamento/exclusão")
+        Container(reportai, "report-ai", "Python / FastAPI", "Prompt clínico, chamada ao LLM, detecção de anomalia (Isolation Forest)")
+    }
+
+    SystemDb_Ext(mongo, "MongoDB Atlas", "Collections do ecossistema")
+    System_Ext(groq, "Groq API", "LLM — geração de texto narrativo")
+
+    Rel(fisio, frontend, "Usa", "HTTPS")
+    Rel(frontend, backend, "Chama", "HTTPS/JSON")
+    Rel(backend, mongo, "Consulta/persiste", "Mongoose")
+    Rel(backend, reportai, "Envia métricas, recebe texto/anomalia", "HTTPS/JSON")
+    Rel(reportai, groq, "Gera narrativa", "HTTPS/JSON")
+```
+
 ### 5.2 Collections MongoDB Utilizadas
 
 Banco: **IBLUEIT** · Cluster: **Cluster-iblueit-v5** · Banco de dados: **MongoDB Atlas**
@@ -364,8 +405,9 @@ A função recebe `patientId`, `period` e `device`, consulta as collections Mong
 | MongoDB Atlas — Mongoose | Já utilizado. Collections existentes consultadas sem modificação de schema. |
 | React + JavaScript (`iblueit-health-Infocharts`) | Já utilizado no frontend. Novas telas seguem o mesmo padrão de componentes. |
 | Python + FastAPI (`URL_API_IA`) | Variável `URL_API_IA` já existe no `local.settings.json`, prevendo uma API IA em Python. |
-| API LLM — Claude Haiku / GPT-4o-mini | Custo < R$ 0,05 por relatório. Suportam prompts longos e terminologia clínica. |
-| WeasyPrint (exportação PDF) | Geração de PDFs a partir do HTML do relatório, sem serviços externos. |
+| API LLM — Groq (`openai/gpt-oss-20b`, API compatível OpenAI) | **Atualizado em relação à v1.1:** a proposta original previa Claude Haiku / GPT-4o-mini, mas ambos exigem cartão de crédito/billing ativo, inviável para um projeto acadêmico sem orçamento. Groq oferece tier gratuito com modelos open-weight (gpt-oss) suficientes para a tarefa, mantendo a mesma interface de chamada (SDK compatível com OpenAI) — a troca não exigiu mudança de arquitetura, só do provedor configurado em `GROQ_API_KEY`/`GROQ_MODEL`. |
+| scikit-learn — Isolation Forest (`report-ai/anomaly_detection.py`) | Componente de ML adicionado após a v1.1 pra cobrir detecção de anomalia (RF10) com um modelo de verdade, treinado no histórico de sessões de cada paciente — complementa a geração de texto via LLM, não a substitui. |
+| jsPDF + jspdf-autotable (exportação PDF, client-side) | **Atualizado em relação à v1.1:** a proposta original previa WeasyPrint (Python/HTML→PDF). Optamos por gerar o PDF nativamente no frontend (texto real, sem captura de tela) para evitar mais uma dependência de sistema (WeasyPrint exige bibliotecas nativas de renderização) e simplificar o pipeline de deploy. |
 | Tabler Icons (`@tabler/icons-webfont@2.44.0`) | Já utilizado na plataforma. Mantém consistência visual. |
 
 ---
@@ -387,7 +429,20 @@ O sistema aproveita a infraestrutura de segurança já existente no I Blue It 5.
 - **Dados consultados no MongoDB:** Métricas numéricas de desempenho (`calibrationoverviews`, `plataformoverviews`, `gameparameters`) e dados demográficos básicos (collection `pacients`: age, sex, condition, weight, height). Nenhum CPF ou dado de identificação direta é processado pelo LLM.
 - **Dados enviados ao LLM:** Somente métricas numéricas agregadas e contexto clínico genérico (condição, idade, dispositivo). O `patientId` não é enviado — apenas um código de sessão temporário.
 - **Base legal (LGPD):** Pesquisa científica e assistência à saúde — Art. 11, II, 'b' e 'c' da LGPD.
-- **Direito de remoção (Art. 18):** Administrador pode arquivar dados clínicos de um paciente mediante solicitação. Remoção definitiva executada em até 72 horas, documentada em audit log.
+- **Direito de remoção (Art. 18) — modelo em duas etapas:**
+  1. **Arquivamento (RN05):** ação padrão, reversível. O relatório some da listagem ativa mas continua no banco — preserva o histórico clínico/auditoria por padrão, já que a maioria das solicitações de "remover" na prática é sobre deixar de ver o dado no dia a dia, não sobre apagar de vez.
+  2. **Exclusão definitiva:** só é permitida sobre um relatório **já arquivado** (endpoint `DELETE /pacients/{pacientId}/clinicalreport/{reportId}`) — é a ação que de fato atende o Art. 18 quando o paciente pede a remoção definitiva dos seus dados. Exige duas etapas deliberadas (arquivar → excluir) para não ser um clique só por engano, e o log de auditoria é gravado **antes** da exclusão (depois não há mais o que consultar). Os `AlertRecord` vinculados ao relatório são removidos em cascata.
+  - *(Nota: a v1.1 desta RFC descrevia só "remoção definitiva em até 72 horas" sem detalhar o mecanismo — esta versão corrige a descrição para bater com o que foi de fato implementado.)*
+
+### 6.2 Acessibilidade (WCAG 2.1)
+
+- A interface usa Material UI (MUI), que já implementa boa parte dos requisitos de semântica e navegação por teclado dos componentes padrão (`Button`, `Select`, `Tabs`, etc.) nativamente.
+- Pontos verificados manualmente: contraste dos Chips de status (Estável/Atenção/Crítico e Ativo/Normal) segue a paleta de cores de alerta do Material Design, com razão de contraste adequada para texto pequeno; navegação entre abas é operável via teclado (`Tabs` do MUI já suporta setas/Tab nativamente).
+- **Limitação conhecida:** não foi feita uma auditoria formal com ferramenta automatizada (ex: axe, Lighthouse) — fica registrado como item pendente, não coberto nesta versão.
+
+### 6.3 Prontuário Eletrônico (Lei nº 13.787/2018)
+
+O sistema **não substitui** o prontuário eletrônico oficial do paciente — é uma ferramenta de apoio analítico que gera um relatório narrativo a partir dos dados do exergame, para o fisioterapeuta revisar e, se pertinente, incorporar manualmente ao prontuário real (daí o aviso fixo em todo relatório: "deve ser revisado pelo profissional responsável antes de ser incorporado ao prontuário clínico"). Por não ser o sistema de registro oficial, os requisitos de guarda/digitalização da Lei 13.787/2018 não se aplicam diretamente a este módulo.
 
 ---
 

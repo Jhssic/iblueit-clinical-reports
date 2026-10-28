@@ -6,6 +6,32 @@ const verifyGameToken = async (token, mongoose) => {
     return true;
 }
 
+// RN01 — verifica gameToken e exige role Administrator/Therapist. Usado nas
+// Azure Functions que mexem com relatório clínico (Generate/Archive/Delete/Get),
+// que antes repetiam esse mesmo bloco cada uma (gerava duplicação no Sonar).
+// Em caso de falha já escreve context.res e chama context.done() — o chamador
+// só precisa checar `if (!requestingUser) return;`.
+const requireClinicalStaff = async (context, req, mongoose, unauthorizedMessage) => {
+    require('../shared/UserAccount');
+    const UserAccountModel = mongoose.model('UserAccount');
+
+    const isVerifiedGameToken = await verifyGameToken(req.headers.gametoken, mongoose);
+    if (!isVerifiedGameToken) {
+        context.res = { status: 403, body: createResponse(false, false, "Chave de acesso inválida.", null, 1) };
+        context.done();
+        return null;
+    }
+
+    const requestingUser = await UserAccountModel.findOne({ "gameToken.token": req.headers.gametoken });
+    if (!requestingUser || !["Administrator", "Therapist"].includes(requestingUser.role)) {
+        context.res = { status: 403, body: createResponse(false, false, unauthorizedMessage, null, 1) };
+        context.done();
+        return null;
+    }
+
+    return requestingUser;
+}
+
 const validateHeaders = async (headers, context) => {
 
     var result = {};
@@ -88,6 +114,7 @@ const sendWelcomeEmail = function (fullname, username, password, userEmail) {
 }
 
 exports.verifyGameToken = verifyGameToken;
+exports.requireClinicalStaff = requireClinicalStaff;
 exports.validateHeaders = validateHeaders;
 exports.createResponse = createResponse;
 exports.sendWelcomeEmail = sendWelcomeEmail;

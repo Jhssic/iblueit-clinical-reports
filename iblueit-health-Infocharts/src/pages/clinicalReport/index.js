@@ -21,6 +21,8 @@ import MenuItem from "@mui/material/MenuItem";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import TextField from "@mui/material/TextField";
+import Switch from "@mui/material/Switch";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import IconButton from "@mui/material/IconButton";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -57,6 +59,7 @@ import {
   fetchAlertCriteria,
   saveAlertCriteria,
   archiveClinicalReport,
+  deleteClinicalReport,
 } from "../../services/api/clinicalReport";
 import { fetchAll as fetchAllPatients } from "../../services/api/patient";
 
@@ -275,6 +278,7 @@ const ClinicalReport = () => {
   };
 
   const [historyFilter, setHistoryFilter] = useState({ dataIni: firstDayOfMonth(), dataFim: "" });
+  const [showArchived, setShowArchived] = useState(false);
 
   const [device, setDevice] = useState("Pitaco");
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -307,6 +311,15 @@ const ClinicalReport = () => {
     if (!context.patientId) return;
     const data = await fetchClinicalReportsHistory(context.patientId, historyFilter);
     setReports(data);
+  };
+
+  // Lista separada da ativa (`reports`/`currentReport`) — arquivados nunca
+  // devem aparecer como "relatório atual" nem entrar no PDF/alertas da tela.
+  const [archivedReports, setArchivedReports] = useState([]);
+  const loadArchivedReports = async () => {
+    if (!context.patientId) return;
+    const data = await fetchClinicalReportsHistory(context.patientId, { archived: true });
+    setArchivedReports(data);
   };
 
   const loadCharts = async () => {
@@ -352,6 +365,23 @@ const ClinicalReport = () => {
       context.addNotification("success", "Relatório arquivado.");
     } catch (err) {
       context.addNotification("error", "Não foi possível arquivar o relatório. Tente novamente.");
+    }
+  };
+
+  // LGPD Art. 18 — exclusão definitiva, só disponível sobre um relatório já
+  // arquivado. Ação irreversível: confirma explicitamente antes de chamar a API.
+  const handleDeleteReport = async (reportId) => {
+    const confirmado = window.confirm(
+      "Excluir este relatório definitivamente? Essa ação não pode ser desfeita."
+    );
+    if (!confirmado) return;
+
+    try {
+      await deleteClinicalReport(context.patientId, reportId);
+      setArchivedReports(archivedReports.filter((r) => r._id !== reportId));
+      context.addNotification("success", "Relatório excluído definitivamente.");
+    } catch (err) {
+      context.addNotification("error", "Não foi possível excluir o relatório. Tente novamente.");
     }
   };
 
@@ -610,6 +640,10 @@ const ClinicalReport = () => {
     if (context.patientId) loadCharts();
   }, [device]);
 
+  useEffect(() => {
+    if (showArchived) void loadArchivedReports();
+  }, [showArchived, context.patientId]);
+
   // ── Ação: gerar relatório (RF05) ───────────────────────────────────────────
 
   const handleGenerate = async () => {
@@ -679,14 +713,14 @@ const ClinicalReport = () => {
   const formatDDMM = (date) =>
     `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
 
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
   const alertDates = new Set();
   reports.forEach((r) => {
     if (!r.alerts || !r.alerts.length || !r.period) return;
-    const cursor = new Date(r.period.start);
-    const end = new Date(r.period.end);
-    while (cursor <= end) {
-      alertDates.add(formatDDMM(cursor));
-      cursor.setDate(cursor.getDate() + 1);
+    const startTime = new Date(r.period.start).getTime();
+    const endTime = new Date(r.period.end).getTime();
+    for (let t = startTime; t <= endTime; t += ONE_DAY_MS) {
+      alertDates.add(formatDDMM(new Date(t)));
     }
   });
 
@@ -961,6 +995,11 @@ const ClinicalReport = () => {
                   onChange={(e) => setHistoryFilter({ ...historyFilter, dataFim: e.target.value })}
                 />
                 <Button variant="contained" sx={BTN} onClick={loadHistory}>Filtrar</Button>
+                <FormControlLabel
+                  sx={{ ml: "auto" }}
+                  control={<Switch checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />}
+                  label={<Typography sx={{ fontSize: 13, color: "#5A5C69" }}>Mostrar arquivados</Typography>}
+                />
               </Box>
 
               {!reports.length ? (
@@ -1020,6 +1059,49 @@ const ClinicalReport = () => {
                     </TableBody>
                   </Table>
                 </TableContainer>
+              )}
+
+              {showArchived && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography sx={{ fontSize: 13, fontWeight: "bold", color: "#9e9e9e", mb: 1 }}>
+                    Relatórios arquivados
+                  </Typography>
+                  {!archivedReports.length ? (
+                    <Typography sx={{ color: "#9e9e9e", fontSize: 13 }}>Nenhum relatório arquivado.</Typography>
+                  ) : (
+                    <TableContainer component={Paper} sx={{ backgroundColor: "white", boxShadow: 2, borderRadius: 2 }}>
+                      <Table>
+                        <TableHead>
+                          <TableRow sx={{ backgroundColor: "#f5f7ff" }}>
+                            <TableCell sx={{ fontWeight: "bold", fontSize: 13, color: "#11192A" }}>Período</TableCell>
+                            <TableCell sx={{ fontWeight: "bold", fontSize: 13, color: "#11192A" }}>Resumo</TableCell>
+                            <TableCell />
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {archivedReports.map((r) => (
+                            <TableRow key={r._id} hover>
+                              <TableCell sx={{ fontSize: 13, color: "#11192A" }}>{r.period.label}</TableCell>
+                              <TableCell sx={{ fontSize: 13, maxWidth: 420, color: "#11192A" }}>
+                                {(r.resumoSessao || "").slice(0, 110)}
+                                {(r.resumoSessao || "").length > 110 ? "…" : ""}
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  size="small"
+                                  sx={{ color: "#c62828", fontSize: 12, textTransform: "none" }}
+                                  onClick={() => handleDeleteReport(r._id)}
+                                >
+                                  Excluir definitivamente
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </Box>
               )}
             </Box>
           )}
@@ -1126,7 +1208,7 @@ const ClinicalReport = () => {
                 <Paper key={idx} sx={{ backgroundColor: "white", borderRadius: 2, p: 3, mb: 2, boxShadow: 2 }}>
                   <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
                     <Typography sx={{ fontWeight: "bold", color: "#11192A", fontSize: 14 }}>Critério {idx + 1}</Typography>
-                    <IconButton size="small" onClick={() => setCriteria(criteria.filter((_, i) => i !== idx))} sx={{ color: "#c62828" }}>
+                    <IconButton size="small" aria-label={`Remover critério ${idx + 1}`} onClick={() => setCriteria(criteria.filter((_, i) => i !== idx))} sx={{ color: "#c62828" }}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Box>

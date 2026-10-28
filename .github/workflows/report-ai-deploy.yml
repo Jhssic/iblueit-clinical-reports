@@ -1,0 +1,65 @@
+# Deploy manual do report-ai pro Azure Container Apps via GitHub Actions.
+#
+# O botão nativo de "Implantação Contínua" do portal não funciona nessa
+# assinatura (Container Apps Environment criado como "Express", que não
+# suporta source control nem identidade gerenciada do sistema). Este
+# workflow faz o equivalente na mão: builda a imagem, envia pro ACR e manda
+# o Container App usar essa nova imagem a cada push.
+
+name: Build and deploy report-ai to Azure Container Apps
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'iblueit-server-side/report-ai/**'
+  workflow_dispatch:
+
+env:
+  ACR_LOGIN_SERVER: iblueitclinicalreportsacr.azurecr.io
+  IMAGE_NAME: iblueit-report-ai
+  CONTAINER_APP_NAME: iblueit-report-ai
+  RESOURCE_GROUP: rg-iblueit-clinical-reports
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # necessário pro login OIDC na Azure
+      contents: read
+
+    steps:
+      - name: 'Checkout'
+        uses: actions/checkout@v4
+
+      - name: 'Login na Azure'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_4A83E6C38D3E4E44A8930C359187A9C0 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_325A9A328E5E41BEA16B0294751AF5F9 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_27D7A7A892AE4754B846CB9695B86D5B }}
+
+      # Usa a mesma identidade do login acima (role AcrPush no registro) pra
+      # autenticar o docker no ACR — sem precisar de usuário/senha do ACR.
+      - name: 'Login no Azure Container Registry'
+        run: az acr login --name iblueitclinicalreportsacr
+
+      - name: 'Build e push da imagem'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./iblueit-server-side/report-ai
+          push: true
+          tags: ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      # Na primeira execução esse passo falha (o Container App ainda não
+      # existe) — é esperado. Depois que o app for criado pelo portal,
+      # rode este workflow de novo (aba Actions → "Run workflow").
+      - name: 'Atualiza o Container App com a nova imagem'
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            az containerapp update \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --image ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}

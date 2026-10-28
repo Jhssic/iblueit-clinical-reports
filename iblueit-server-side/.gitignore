@@ -1,6 +1,7 @@
 # Python (report-ai)
 report-ai/venv
 report-ai/__pycache__
+report-ai/.pytest_cache
 
 # Scripts de conveniência local
 run-backend.sh
