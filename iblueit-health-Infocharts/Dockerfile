@@ -3,7 +3,10 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# --legacy-peer-deps: o projeto usa React 16 com libs (ex: @mui/icons-material)
+# que pedem React 17/18 como peer dependency — conflito pré-existente, não
+# introduzido por este Dockerfile. "npm ci" estrito falha nisso.
+RUN npm ci --legacy-peer-deps
 
 COPY public ./public
 COPY src ./src
