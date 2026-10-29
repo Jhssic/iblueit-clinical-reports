@@ -145,7 +145,9 @@ module.exports = async function (context, req) {
         // --- RF05 / FA03: chamada à API de IA (URL_API_IA) ---
         let iaResponse;
         try {
-            const apiRes = await axios.post(`${process.env.URL_API_IA}/generate-report`, iaPayload, { timeout: 25000 });
+            // timeout maior que o normal pra tolerar o "cold start" do report-ai
+            // quando ele escala de 0 pra 1 réplica após ficar ocioso.
+            const apiRes = await axios.post(`${process.env.URL_API_IA}/generate-report`, iaPayload, { timeout: 60000 });
             iaResponse = apiRes.data;
         } catch (iaErr) {
             context.log("[URL_API_IA] - ERROR: ", iaErr.message);
