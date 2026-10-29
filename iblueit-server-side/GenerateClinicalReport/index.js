@@ -143,20 +143,28 @@ module.exports = async function (context, req) {
         };
 
         // --- RF05 / FA03: chamada à API de IA (URL_API_IA) ---
+        // O Container App do report-ai escala pra 0 réplicas quando ocioso, e o
+        // ingress da Azure corta a requisição em ~30s se o container ainda não
+        // acordou — o container continua inicializando em segundo plano, então
+        // uma segunda tentativa logo em seguida normalmente já encontra ele pronto.
         let iaResponse;
-        try {
-            // timeout maior que o normal pra tolerar o "cold start" do report-ai
-            // quando ele escala de 0 pra 1 réplica após ficar ocioso.
-            const apiRes = await axios.post(`${process.env.URL_API_IA}/generate-report`, iaPayload, { timeout: 60000 });
-            iaResponse = apiRes.data;
-        } catch (iaErr) {
-            context.log("[URL_API_IA] - ERROR: ", iaErr.message);
-            context.res = {
-                status: 503,
-                body: utils.createResponse(false, true, "O serviço de geração de relatório está indisponível. Tente novamente.", null, null),
-            };
-            context.done();
-            return;
+        const IA_MAX_ATTEMPTS = 3;
+        for (let attempt = 1; attempt <= IA_MAX_ATTEMPTS; attempt++) {
+            try {
+                const apiRes = await axios.post(`${process.env.URL_API_IA}/generate-report`, iaPayload, { timeout: 60000 });
+                iaResponse = apiRes.data;
+                break;
+            } catch (iaErr) {
+                context.log(`[URL_API_IA] - ERROR (tentativa ${attempt}/${IA_MAX_ATTEMPTS}): `, iaErr.message);
+                if (attempt === IA_MAX_ATTEMPTS) {
+                    context.res = {
+                        status: 503,
+                        body: utils.createResponse(false, true, "O serviço de geração de relatório está indisponível. Tente novamente.", null, null),
+                    };
+                    context.done();
+                    return;
+                }
+            }
         }
 
         // --- RF09/RF10/RN04: avalia critérios configurados (ou o padrão, se nenhum existir) ---
