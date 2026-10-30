@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir --only-binary=:all: --require-hashes -r requireme
 # Copia só os módulos de verdade (não "COPY . ."), pra não arriscar incluir
 # nada sensível/desnecessário do contexto de build — lembrar de adicionar
 # aqui qualquer novo arquivo .py que a aplicação passe a precisar.
-COPY main.py narrative.py ./
+COPY main.py narrative.py anomaly_detection.py ./
 
 RUN useradd --no-create-home --uid 1000 appuser
 USER appuser
