@@ -62,7 +62,7 @@ module.exports = async function (context, req) {
         }
     } catch (err) {
         context.log("[DB SAVING] - ERROR: ", err);
-        context.res = { status: 500, body: utils.createResponse(false, true, "Ocorreu um erro interno ao realizar a operação.", null, 00) }
+        context.res = { status: 500, body: utils.createResponse(false, true, "Ocorreu um erro interno ao realizar a operação.", null, 0) }
     }
 
     context.done();

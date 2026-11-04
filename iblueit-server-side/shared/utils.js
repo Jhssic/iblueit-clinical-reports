@@ -89,6 +89,8 @@ const sendWelcomeEmail = function (fullname, username, password, userEmail) {
     var transporter = nodemailer.createTransport({
         host: process.env.SMTP_Server_Hostname,
         port: 587,
+        secure: false,
+        requireTLS: true,
         auth: {
             user: process.env.SMTP_Server_Username,
             pass: process.env.SMTP_Server_Password

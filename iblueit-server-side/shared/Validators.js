@@ -166,7 +166,7 @@ exports.createUserValidator = (createTokenReq) => {
     let rules = {
         fullname: 'required|string',
         username: 'required|string',
-        password: 'required|string',
+        password: 'required|string', // NOSONAR - nome do campo de validação, não é uma senha hardcoded
         email: 'required|email',
         role: ['required', { 'in': ['Administrator', 'User'] }],
         pacientId: [{ required_if: ['role', 'User'] }, 'regex:/^[0-9a-fA-F]{24}$/i'],
@@ -182,7 +182,7 @@ exports.authenticateValidator = (authenticateReq) => {
 
     let rules = {
         username: 'required|string',
-        password: 'required|string'
+        password: 'required|string' // NOSONAR - nome do campo de validação, não é uma senha hardcoded
     };
 
     let validation = new Validator(authenticateReq, rules);

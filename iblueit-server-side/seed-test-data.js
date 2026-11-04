@@ -132,7 +132,7 @@ async function main() {
   const tokenRes = await axios.post(`${BASE_URL}/token`, { userId: USER_ID });
   const gameToken = tokenRes.data.data.gameToken;
   const headers = { gametoken: gameToken };
-  console.log("gameToken:", gameToken);
+  console.log("gameToken obtido (" + String(gameToken).length + " caracteres)");
 
   for (const def of PATIENTS) {
     const pacientId = await createPatient(headers, def);

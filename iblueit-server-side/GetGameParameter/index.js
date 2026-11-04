@@ -75,7 +75,7 @@ module.exports = async function (context, req) {
         context.log("[DB QUERYING] - ERROR: ", err);
         context.res = {
             status: 500,
-            body: utils.createResponse(false, true, "Ocorreu um erro interno ao realizar a operação.", null, 00)
+            body: utils.createResponse(false, true, "Ocorreu um erro interno ao realizar a operação.", null, 0)
         }
     }
 
