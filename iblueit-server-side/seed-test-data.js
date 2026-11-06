@@ -8,7 +8,7 @@
 
 const axios = require("axios");
 
-const BASE_URL = "http://localhost:7071/api";
+const BASE_URL = "https://iblueit-clinical-reports-api-endwfqcrd0gbbghb.mexicocentral-01.azurewebsites.net/api";
 const USER_ID = "6a72892a9048ea2c9e5e03a5"; // conta jhessica_tcc
 
 const PATIENTS = [
