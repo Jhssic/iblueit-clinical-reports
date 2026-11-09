@@ -23,12 +23,21 @@ jobs:
       # Gera coverage.xml do report-ai pro Sonar calcular "Coverage on New Code"
       # de verdade — sem isso o scan roda mas o Quality Gate reprova qualquer
       # PR com código novo (cobertura sempre aparece como 0%).
+      #
+      # Roda a partir da raiz do repo (não de dentro de report-ai/) com
+      # relative_files=True (.coveragerc) de propósito: o scanner do
+      # SonarCloud roda dentro de um container, então um coverage.xml com
+      # caminho absoluto do runner do GitHub Actions não existe lá dentro —
+      # a cobertura some em silêncio (sem erro, só fica 0%). Caminho relativo
+      # à raiz do repo resolve certo nos dois lados.
       - name: Testes do report-ai com cobertura
-        working-directory: iblueit-server-side/report-ai
         run: |
-          pip install -r requirements.txt
+          pip install -r iblueit-server-side/report-ai/requirements.txt
           pip install pytest-cov
-          pytest --cov=narrative --cov-report=xml:coverage.xml
+          pytest iblueit-server-side/report-ai/test_narrative.py \
+            --cov=iblueit-server-side/report-ai \
+            --cov-config=iblueit-server-side/report-ai/.coveragerc \
+            --cov-report=xml:iblueit-server-side/report-ai/coverage.xml
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v3
