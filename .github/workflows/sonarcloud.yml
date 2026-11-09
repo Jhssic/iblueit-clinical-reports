@@ -15,6 +15,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Gera coverage.xml do report-ai pro Sonar calcular "Coverage on New Code"
+      # de verdade — sem isso o scan roda mas o Quality Gate reprova qualquer
+      # PR com código novo (cobertura sempre aparece como 0%).
+      - name: Testes do report-ai com cobertura
+        working-directory: iblueit-server-side/report-ai
+        run: |
+          pip install -r requirements.txt
+          pip install pytest-cov
+          pytest --cov=narrative --cov-report=xml:coverage.xml
+
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v3
         env:
