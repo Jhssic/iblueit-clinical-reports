@@ -107,7 +107,7 @@ module.exports = async function (context, req) {
         const priorReportsCount = await ClinicalReportModel.countDocuments({ pacientId, archived: false });
         const isFirstReport = priorReportsCount === 0;
 
-        // --- período anterior, de mesma duração, para análise comparativa ---
+        // --- período anterior, de mesma duração, para contexto do resumo ---
         let previous = { metrics: {}, sessionCount: 0 };
         if (!isFirstReport) {
             const durationMs = end.getTime() - start.getTime();
@@ -115,6 +115,15 @@ module.exports = async function (context, req) {
             const prevStart = new Date(start.getTime() - durationMs);
             previous = await clinicalMetrics.extractMetricsForPeriod({ pacientId, device, start: prevStart, end: prevEnd }, mongoose);
         }
+
+        // --- Evolução (feedback do piloto com o professor): compara sempre com a
+        // avaliação inicial do paciente (primeiro relatório, mesmo dispositivo),
+        // não com o período anterior — "Avaliação inicial" fica fixa como marco
+        // de referência ao longo de todo o acompanhamento.
+        const firstReport = isFirstReport
+            ? null
+            : await ClinicalReportModel.findOne({ pacientId, device, archived: false }).sort({ created_at: 1 });
+        const initialMetrics = isFirstReport ? current.metrics : (firstReport ? firstReport.currentMetrics : null);
 
         // --- RNF03: contexto anonimizado (sem nome, sem CPF, sem patientId real) ---
         const sessionCode = "PAC-" + String(pacient._id).slice(-4).toUpperCase();
@@ -136,6 +145,7 @@ module.exports = async function (context, req) {
             isFirstReport,
             currentMetrics: current.metrics,
             previousMetrics: isFirstReport ? null : previous.metrics,
+            initialMetrics: isFirstReport ? null : initialMetrics,
             metricSources: current.metricSources,
             missingOptionalFields,
             patientContext,
@@ -178,8 +188,9 @@ module.exports = async function (context, req) {
             isFirstReport,
             currentMetrics: current.metrics,
             previousMetrics: isFirstReport ? null : previous.metrics,
+            initialMetrics: isFirstReport ? current.metrics : initialMetrics,
             resumoSessao: iaResponse.resumoSessao,
-            analiseComparativa: iaResponse.analiseComparativa,
+            evolucao: iaResponse.evolucao,
             avisoRevisao: iaResponse.avisoRevisao,
             dadosBrutos: iaResponse.dadosBrutos,
             generatedBy: iaResponse.generatedBy,
