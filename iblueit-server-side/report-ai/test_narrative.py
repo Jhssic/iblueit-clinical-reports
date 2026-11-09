@@ -75,6 +75,38 @@ def test_check_coherence_ignora_tendencia_de_estabilidade():
     assert avisos == []
 
 
+def test_round_borg_arredonda_para_inteiro():
+    assert narrative._round_borg({"DJ": 0.5, "EB": 4.33})["EB"] == 4
+    assert narrative._round_borg({"DJ": 0.5, "EB": 4.6})["EB"] == 5
+
+
+def test_round_borg_sem_eb_nao_quebra():
+    assert narrative._round_borg({"DJ": 0.5}) == {"DJ": 0.5}
+    assert narrative._round_borg(None) is None
+
+
+def test_build_evolucao_sem_avaliacao_inicial_retorna_none():
+    assert narrative._build_evolucao({"DJ": 0.5}, None) is None
+
+
+def test_build_evolucao_compara_as_7_variaveis_principais():
+    current = {"DJ": 0.80, "PJ": 120, "CGc": 5.0, "FR": 16, "PEmax": 90, "PImax": 95, "EB": 3.6}
+    inicial = {"DJ": 0.50, "PJ": 100, "CGc": 5.0, "FR": 16, "PEmax": 90, "PImax": 95, "EB": 5.0}
+    evolucao = narrative._build_evolucao(current, inicial)
+
+    assert "Desempenho do Jogador (DJ)" in evolucao
+    assert "Pontos da Jogada (PJ)" in evolucao
+    assert "estável em relação à avaliação inicial" in evolucao  # CGc/FR/PEmax/PImax
+    # EB: 5 -> 4 (arredondado de 3.6) é redução, não deve aparecer como estável
+    assert "Escala de Borg (EB) apresentou redução" in evolucao
+
+
+def test_objective_trends_arredonda_eb_antes_de_comparar():
+    # 4.6 arredonda pra 5, igual ao inicial — não deve contar como "melhora"
+    trends = narrative._objective_trends({"EB": 4.6}, {"EB": 5})
+    assert trends["EB"] == "estabilidade"
+
+
 def test_generate_sem_chave_de_api_usa_template_deterministico(monkeypatch):
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
 
@@ -92,3 +124,4 @@ def test_generate_sem_chave_de_api_usa_template_deterministico(monkeypatch):
     assert result["coerenciaVerificada"] is True
     assert result["avisosCoerencia"] == []
     assert "Pitaco" in result["resumoSessao"]
+    assert "avaliação inicial" in result["evolucao"]

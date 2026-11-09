@@ -38,6 +38,9 @@ import PersonIcon from "@mui/icons-material/Person";
 import {
   LineChart,
   Line,
+  BarChart,
+  Bar,
+  Legend,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -99,6 +102,25 @@ const ALERT_METRIC_OPTIONS = [
 ];
 const METRIC_LABELS = ALERT_METRIC_OPTIONS.reduce((acc, m) => ({ ...acc, [m.code]: m.label }), {});
 const CONDITION_OPTIONS = ["Deterioração consecutiva", "Queda percentual >", "Abaixo do valor", "Anomalia (IA)"];
+
+// As 7 variáveis principais do relatório (cards + seção Evolução) — pedido no
+// piloto com o professor: antes só DJ/PJ/CGc apareciam nos cards.
+const MAIN_METRIC_CARDS = [
+  { key: "DJ", label: "Desempenho (DJ)" },
+  { key: "PJ", label: "Pontos da Jogada (PJ)" },
+  { key: "CGc", label: "Carga Corrente (CGc)" },
+  { key: "FR", label: "Frequência Respiratória (FR)" },
+  { key: "PEmax", label: "Pressão Expiratória Máxima (PEmax)" },
+  { key: "PImax", label: "Pressão Inspiratória Máxima (PImax)" },
+  { key: "EB", label: "Escala de Borg (EB)" },
+];
+
+// EB (Escala de Borg) é sempre um inteiro de 0-10 — exibir com casas decimais
+// não faz sentido clínico (pedido no piloto com o professor).
+const formatMetricValue = (key, value) => {
+  if (value == null) return "—";
+  return key === "EB" ? String(Math.round(Number(value))) : Number(value).toFixed(2);
+};
 
 // FA02 — métricas que o ecossistema I Blue It simplesmente não tem como medir
 // hoje (ex: SpO2min precisa de um oxímetro, que não existe integrado). Uma
@@ -540,34 +562,51 @@ const ClinicalReport = () => {
         );
       }
 
-      // Métricas principais
+      // Métricas principais — as 7 variáveis dos cards (feedback do piloto com o professor)
       y = pdfEnsureSpace(doc, y, 20, pageHeight);
       doc.setFont(undefined, "bold");
       doc.setFontSize(11);
       doc.setTextColor(...PDF_COLORS.navy);
-      const dj = currentReport.currentMetrics.DJ;
-      const pj = currentReport.currentMetrics.PJ;
-      const cgc = currentReport.currentMetrics.CGc;
-      doc.text(
-        `DJ: ${dj != null ? Number(dj).toFixed(2) : "—"}    PJ: ${pj != null ? Number(pj).toFixed(2) : "—"}    CGc: ${
-          cgc != null ? Number(cgc).toFixed(2) : "—"
-        }`,
-        PDF_MARGIN,
-        y
-      );
+      const metricasLinha = MAIN_METRIC_CARDS.map(
+        (card) => `${card.key}: ${formatMetricValue(card.key, currentReport.currentMetrics[card.key])}`
+      ).join("    ");
+      doc.text(metricasLinha, PDF_MARGIN, y);
       doc.setFont(undefined, "normal");
       y += 24;
+
+      // Objetivos do Tratamento
+      y = pdfAddSectionTitle(doc, "Objetivos do Tratamento", y, pageHeight);
+      y = pdfAddParagraph(doc, "• Treinamento Muscular Inspiratório (TMI)", y, pageWidth, pageHeight);
+      y += 10;
 
       // Resumo da sessão
       y = pdfAddSectionTitle(doc, "Resumo da sessão", y, pageHeight);
       y = pdfAddParagraph(doc, currentReport.resumoSessao, y, pageWidth, pageHeight);
       y += 10;
 
-      // Análise comparativa
-      if (currentReport.analiseComparativa) {
-        y = pdfAddSectionTitle(doc, "Análise comparativa", y, pageHeight);
-        y = pdfAddParagraph(doc, currentReport.analiseComparativa, y, pageWidth, pageHeight);
+      // Evolução (avaliação inicial x estado atual)
+      if (currentReport.evolucao) {
+        y = pdfAddSectionTitle(doc, "Evolução", y, pageHeight);
+        y = pdfAddParagraph(doc, currentReport.evolucao, y, pageWidth, pageHeight);
         y += 10;
+
+        if (currentReport.initialMetrics) {
+          autoTable(doc, {
+            startY: y,
+            margin: { left: PDF_MARGIN, right: PDF_MARGIN },
+            head: [["Variável", "Avaliação inicial", "Estado atual"]],
+            body: MAIN_METRIC_CARDS.filter(
+              (card) => currentReport.initialMetrics[card.key] != null || currentReport.currentMetrics[card.key] != null
+            ).map((card) => [
+              card.label,
+              formatMetricValue(card.key, currentReport.initialMetrics[card.key]),
+              formatMetricValue(card.key, currentReport.currentMetrics[card.key]),
+            ]),
+            headStyles: { fillColor: PDF_COLORS.navy },
+            styles: { fontSize: 9 },
+          });
+          y = doc.lastAutoTable.finalY + 16;
+        }
       }
 
       // FA02 — campos opcionais não consultados
@@ -878,21 +917,30 @@ const ClinicalReport = () => {
                 </Paper>
               )}
 
-              {/* Cards de métricas — DJ / PJ / CGc */}
+              {/* Cards de métricas — as 7 variáveis principais (feedback do piloto com o professor) */}
               <Box sx={{ display: "flex", gap: 2, mb: 2.5, flexWrap: "wrap" }}>
-                {[
-                  { label: "Desempenho (DJ)", value: currentReport.currentMetrics.DJ },
-                  { label: "Pontos da Jogada (PJ)", value: currentReport.currentMetrics.PJ },
-                  { label: "Carga Corrente (CGc)", value: currentReport.currentMetrics.CGc },
-                ].map((card) => (
-                  <Paper key={card.label} sx={{ ...BLOCK, mb: 0, flex: "1 1 180px", textAlign: "center" }}>
-                    <Typography sx={{ fontSize: 12, color: "#9e9e9e" }}>{card.label}</Typography>
-                    <Typography sx={{ fontSize: 24, fontWeight: "bold", color: "#1e2b48" }}>
-                      {card.value != null ? Number(card.value).toFixed(2) : "—"}
-                    </Typography>
-                  </Paper>
-                ))}
+                {MAIN_METRIC_CARDS.map((card) => {
+                  const value = currentReport.currentMetrics[card.key];
+                  return (
+                    <Paper key={card.key} sx={{ ...BLOCK, mb: 0, flex: "1 1 160px", textAlign: "center" }}>
+                      <Typography sx={{ fontSize: 12, color: "#9e9e9e" }}>{card.label}</Typography>
+                      <Typography sx={{ fontSize: 24, fontWeight: "bold", color: "#1e2b48" }}>
+                        {formatMetricValue(card.key, value)}
+                      </Typography>
+                    </Paper>
+                  );
+                })}
               </Box>
+
+              {/* Objetivos do Tratamento (feedback do piloto com o professor) */}
+              <Paper sx={BLOCK}>
+                <Typography sx={{ fontWeight: "bold", color: "#11192A", fontSize: 15, mb: 1 }}>
+                  Objetivos do Tratamento
+                </Typography>
+                <Typography sx={{ color: "#5A5C69", fontSize: 14 }}>
+                  • Treinamento Muscular Inspiratório (TMI)
+                </Typography>
+              </Paper>
 
               <Paper sx={BLOCK}>
                 <Box sx={{ display: "flex", alignItems: "center", mb: 1.5 }}>
@@ -904,14 +952,69 @@ const ClinicalReport = () => {
                 </Typography>
               </Paper>
 
-              {currentReport.analiseComparativa && (
+              {currentReport.evolucao && (
                 <Paper sx={BLOCK}>
                   <Typography sx={{ fontWeight: "bold", color: "#11192A", fontSize: 15, mb: 1.5 }}>
-                    Análise comparativa
+                    Evolução
                   </Typography>
-                  <Typography sx={{ color: "#5A5C69", lineHeight: 1.75, fontSize: 14 }}>
-                    {currentReport.analiseComparativa}
+                  <Typography sx={{ color: "#5A5C69", lineHeight: 1.75, fontSize: 14, mb: currentReport.initialMetrics ? 2.5 : 0 }}>
+                    {currentReport.evolucao}
                   </Typography>
+
+                  {currentReport.initialMetrics && (
+                    <>
+                      <TableContainer sx={{ mb: 2.5 }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ fontWeight: "bold", fontSize: 12, color: "#11192A" }}>Variável</TableCell>
+                              <TableCell sx={{ fontWeight: "bold", fontSize: 12, color: "#11192A" }} align="right">Avaliação inicial</TableCell>
+                              <TableCell sx={{ fontWeight: "bold", fontSize: 12, color: "#11192A" }} align="right">Estado atual</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {MAIN_METRIC_CARDS.map((card) => {
+                              const inicial = currentReport.initialMetrics[card.key];
+                              const atual = currentReport.currentMetrics[card.key];
+                              if (inicial == null && atual == null) return null;
+                              return (
+                                <TableRow key={card.key}>
+                                  <TableCell sx={{ fontSize: 12, color: "#11192A" }}>{card.label}</TableCell>
+                                  <TableCell sx={{ fontSize: 12, color: "#9e9e9e" }} align="right">
+                                    {formatMetricValue(card.key, inicial)}
+                                  </TableCell>
+                                  <TableCell sx={{ fontSize: 12, color: "#11192A", fontWeight: "bold" }} align="right">
+                                    {formatMetricValue(card.key, atual)}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+
+                      <Box sx={{ height: 260 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={MAIN_METRIC_CARDS.map((card) => ({
+                              name: card.key,
+                              "Avaliação inicial": currentReport.initialMetrics[card.key],
+                              "Estado atual": currentReport.currentMetrics[card.key],
+                            }))}
+                            margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                            <XAxis dataKey="name" tick={{ fill: "#9e9e9e", fontSize: 12 }} />
+                            <YAxis tick={{ fill: "#9e9e9e", fontSize: 12 }} />
+                            <Tooltip />
+                            <Legend wrapperStyle={{ fontSize: 12 }} />
+                            <Bar dataKey="Avaliação inicial" fill="#9e9e9e" />
+                            <Bar dataKey="Estado atual" fill="#1e2b48" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </>
+                  )}
                 </Paper>
               )}
 

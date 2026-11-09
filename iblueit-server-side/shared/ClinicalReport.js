@@ -12,8 +12,13 @@ const ClinicalReportSchema = mongoose.Schema({
     isFirstReport: { type: Boolean },
     currentMetrics: { type: mongoose.Schema.Types.Mixed },
     previousMetrics: { type: mongoose.Schema.Types.Mixed },
+    // Métricas da primeira avaliação do paciente (mesmo dispositivo) — base fixa
+    // de comparação da seção "Evolução", pedido no piloto com o professor: em
+    // vez de comparar com o período imediatamente anterior, compara com a
+    // avaliação inicial.
+    initialMetrics: { type: mongoose.Schema.Types.Mixed },
     resumoSessao: { type: String },
-    analiseComparativa: { type: String },
+    evolucao: { type: String },
     avisoRevisao: { type: String },
     dadosBrutos: [{
         metrica: { type: String },
