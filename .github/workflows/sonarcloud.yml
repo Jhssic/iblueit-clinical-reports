@@ -33,8 +33,8 @@ jobs:
       - name: Testes do report-ai com cobertura
         run: |
           pip install -r iblueit-server-side/report-ai/requirements.txt
-          pip install pytest-cov
-          pytest iblueit-server-side/report-ai/test_narrative.py \
+          pip install pytest-cov httpx
+          pytest iblueit-server-side/report-ai/ \
             --cov=iblueit-server-side/report-ai \
             --cov-config=iblueit-server-side/report-ai/.coveragerc \
             --cov-report=xml:iblueit-server-side/report-ai/coverage.xml
