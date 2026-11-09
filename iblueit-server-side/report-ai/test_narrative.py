@@ -1,11 +1,14 @@
 """
 Testes do núcleo de geração/validação do relatório narrativo.
 
-Cobre as partes que não dependem de chamada real ao LLM (determinísticas) —
-a chamada via Groq (_generate_via_llm) não é testada aqui porque depende de
-rede/chave de API; o que importa testar é a lógica de validação em volta
-dela, que é o que de fato mitiga o risco de alucinação (RF05/FA03).
+A chamada real à API da Groq nunca é feita aqui (sem rede, sem chave) — o
+cliente `openai.OpenAI` é substituído por um fake nos testes de
+`_generate_via_llm`, só pra exercitar a lógica em volta dela (parsing da
+resposta, fallback pro template em caso de falha), que é o que de fato
+mitiga o risco de alucinação (RF05/FA03).
 """
+
+import openai
 
 import narrative
 
@@ -92,3 +95,120 @@ def test_generate_sem_chave_de_api_usa_template_deterministico(monkeypatch):
     assert result["coerenciaVerificada"] is True
     assert result["avisosCoerencia"] == []
     assert "Pitaco" in result["resumoSessao"]
+
+
+def _make_fake_openai(content=None, raise_error=False):
+    """Fake mínimo pro cliente `openai.OpenAI` — só o suficiente pra
+    `client.chat.completions.create(**kwargs)` funcionar nos testes."""
+
+    class _FakeCompletions:
+        @staticmethod
+        def create(**kwargs):
+            if raise_error:
+                raise RuntimeError("Groq indisponível (simulado)")
+            message = type("Msg", (), {"content": content})()
+            choice = type("Choice", (), {"message": message})()
+            return type("Resp", (), {"choices": [choice]})()
+
+    class _FakeChat:
+        completions = _FakeCompletions()
+
+    class _FakeOpenAI:
+        def __init__(self, *args, **kwargs):
+            self.chat = _FakeChat()
+
+    return _FakeOpenAI
+
+
+def test_generate_via_llm_sucesso_usa_resposta_do_modelo(monkeypatch):
+    monkeypatch.setattr(
+        openai,
+        "OpenAI",
+        _make_fake_openai(
+            content='{"resumoSessao": "Resumo via LLM.", '
+            '"analiseComparativa": "DJ manteve-se estável em relação ao período anterior."}'
+        ),
+    )
+
+    payload = {
+        "device": "Pitaco",
+        "period": {"start": "2026-01-01", "end": "2026-01-07"},
+        "sessionCount": 3,
+        "isFirstReport": False,
+        "currentMetrics": {"DJ": 0.5},
+        "previousMetrics": {"DJ": 0.5},
+        "metricSources": {},
+        "patientContext": {},
+    }
+    result = narrative._generate_via_llm(payload, api_key="fake-key")
+
+    assert result["generatedBy"] == "llm"
+    assert result["resumoSessao"] == "Resumo via LLM."
+    assert "estável" in result["analiseComparativa"]
+    assert result["coerenciaVerificada"] is True
+    assert result["avisosCoerencia"] == []
+
+
+def test_generate_via_llm_sinaliza_incoerencia_com_tendencia_real(monkeypatch):
+    # DJ caiu de verdade (0.68 -> 0.40), mas o texto diz "melhora" — _check_coherence
+    # deve pegar essa contradição (caso real que motivou a checagem, RF05/FA03).
+    monkeypatch.setattr(
+        openai,
+        "OpenAI",
+        _make_fake_openai(
+            content='{"resumoSessao": "Resumo via LLM.", '
+            '"analiseComparativa": "DJ apresentou melhora significativa em relação ao período anterior."}'
+        ),
+    )
+
+    payload = {
+        "device": "Pitaco",
+        "period": {"start": "2026-01-01", "end": "2026-01-07"},
+        "sessionCount": 3,
+        "isFirstReport": False,
+        "currentMetrics": {"DJ": 0.40},
+        "previousMetrics": {"DJ": 0.68},
+        "metricSources": {},
+        "patientContext": {},
+    }
+    result = narrative._generate_via_llm(payload, api_key="fake-key")
+
+    assert result["coerenciaVerificada"] is False
+    assert any(a["metrica"] == "DJ" for a in result["avisosCoerencia"])
+
+
+def test_generate_via_llm_fallback_quando_chamada_falha(monkeypatch):
+    monkeypatch.setattr(openai, "OpenAI", _make_fake_openai(raise_error=True))
+
+    payload = {
+        "device": "Pitaco",
+        "period": {"start": "2026-01-01", "end": "2026-01-07"},
+        "sessionCount": 2,
+        "isFirstReport": True,
+        "currentMetrics": {"DJ": 0.6, "EB": 3},
+        "metricSources": {},
+        "patientContext": {},
+    }
+    result = narrative._generate_via_llm(payload, api_key="fake-key")
+
+    assert result["generatedBy"] == "template"
+    assert "sessão de referência inicial" in result["analiseComparativa"]
+
+
+def test_generate_via_llm_fallback_quando_resposta_nao_e_json(monkeypatch):
+    # Resposta não-JSON (modelo pequeno às vezes ignora a instrução) também
+    # deve cair pro template, não estourar erro.
+    monkeypatch.setattr(openai, "OpenAI", _make_fake_openai(content="isso não é um JSON válido"))
+
+    payload = {
+        "device": "Pitaco",
+        "period": {"start": "2026-01-01", "end": "2026-01-07"},
+        "sessionCount": 1,
+        "isFirstReport": True,
+        "currentMetrics": {"DJ": 0.6},
+        "metricSources": {},
+        "patientContext": {},
+    }
+    result = narrative._generate_via_llm(payload, api_key="fake-key")
+
+    assert result["generatedBy"] == "template"
