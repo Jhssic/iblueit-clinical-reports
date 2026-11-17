@@ -59,6 +59,18 @@ def _pct_change(current, previous):
     return round(((current - previous) / previous) * 100, 1)
 
 
+def _round_borg(metrics):
+    """Escala de Borg (EB) é um valor inteiro de 0-10 por definição clínica —
+    a média de várias sessões pode gerar um real (ex: 4.33), que não faz
+    sentido nessa escala. Arredonda antes de usar em qualquer texto/comparação
+    sintetizada (pedido do professor no piloto com fisioterapeuta)."""
+    if not metrics or metrics.get("EB") is None:
+        return metrics
+    rounded = dict(metrics)
+    rounded["EB"] = round(rounded["EB"])
+    return rounded
+
+
 def _trend_word(diff):
     if diff is None:
         return None
@@ -100,32 +112,45 @@ def _build_resumo(device, period, session_count, current_metrics):
     if fr is not None:
         partes.append(f"A frequência respiratória (FR) média observada foi de {fr:.0f} rpm.")
     if eb is not None:
-        partes.append(f"A Escala de Borg (esforço percebido) média foi de {eb:.1f}.")
+        partes.append(f"A Escala de Borg (esforço percebido) média foi de {eb:.0f}.")
 
     return " ".join(partes)
 
 
-def _build_analise_comparativa(current_metrics, previous_metrics):
-    if not previous_metrics:
+# As 7 variáveis principais exibidas nos cards do relatório (feedback do piloto
+# com o professor) — base tanto da seção "Evolução" quanto da checagem de
+# coerência.
+MAIN_METRICS = ("DJ", "PJ", "CGc", "FR", "PEmax", "PImax", "EB")
+
+
+def _build_evolucao(current_metrics, initial_metrics):
+    """Compara o estado atual com a avaliação inicial do paciente (primeiro
+    relatório, mesmo dispositivo) — não com o período imediatamente anterior.
+    Renomeado de "Análise comparativa" para "Evolução" a pedido do professor
+    no piloto com o fisioterapeuta."""
+    if not initial_metrics:
         return None
 
+    current_metrics = _round_borg(current_metrics)
+    initial_metrics = _round_borg(initial_metrics)
+
     frases = []
-    for key in ("DJ", "PJ", "CGc", "FR", "EB"):
+    for key in MAIN_METRICS:
         cur = current_metrics.get(key)
-        prev = previous_metrics.get(key)
-        if cur is None or prev is None:
+        inicial = initial_metrics.get(key)
+        if cur is None or inicial is None:
             continue
-        diff = _pct_change(cur, prev)
+        diff = _pct_change(cur, inicial)
         if diff is None:
             continue
         label, _ = METRIC_LABELS[key]
         tendencia = _trend_word(diff)
         if tendencia == "estabilidade":
-            frases.append(f"{label} ({key}) manteve-se estável em relação ao período anterior.")
+            frases.append(f"{label} ({key}) manteve-se estável em relação à avaliação inicial.")
         else:
             frases.append(
-                f"{label} ({key}) apresentou {tendencia} de {abs(diff)}% em relação ao "
-                f"período anterior (de {prev:.2f} para {cur:.2f})."
+                f"{label} ({key}) apresentou {tendencia} de {abs(diff)}% em relação à "
+                f"avaliação inicial (de {inicial:.2f} para {cur:.2f})."
             )
 
     if not frases:
@@ -133,19 +158,21 @@ def _build_analise_comparativa(current_metrics, previous_metrics):
     return " ".join(frases)
 
 
-def _objective_trends(current_metrics, previous_metrics):
+def _objective_trends(current_metrics, initial_metrics):
     """Tendência esperada por métrica (melhora/redução/estabilidade), calculada
     diretamente dos números — usada como referência objetiva para checar se o
     texto gerado pelo LLM não contradiz os dados (ver `_check_coherence`)."""
-    if not previous_metrics:
+    if not initial_metrics:
         return {}
+    current_metrics = _round_borg(current_metrics)
+    initial_metrics = _round_borg(initial_metrics)
     trends = {}
-    for key in ("DJ", "PJ", "CGc", "FR", "EB"):
+    for key in MAIN_METRICS:
         cur = current_metrics.get(key)
-        prev = previous_metrics.get(key)
-        if cur is None or prev is None:
+        inicial = initial_metrics.get(key)
+        if cur is None or inicial is None:
             continue
-        diff = _pct_change(cur, prev)
+        diff = _pct_change(cur, inicial)
         if diff is None:
             continue
         trends[key] = _trend_word(diff)
@@ -245,15 +272,18 @@ def generate(payload: dict) -> dict:
     """Gera o relatório narrativo a partir das métricas já extraídas do MongoDB.
 
     `payload` segue o formato montado pela Azure Function GenerateClinicalReport:
-    device, period, sessionCount, isFirstReport, currentMetrics, previousMetrics,
+    device, period, sessionCount, isFirstReport, currentMetrics, initialMetrics,
     metricSources, patientContext, alerts.
     """
     device = payload.get("device", "Pitaco")
     period = payload.get("period", {})
     session_count = payload.get("sessionCount", 0)
     is_first_report = payload.get("isFirstReport", False)
-    current_metrics = payload.get("currentMetrics", {})
-    previous_metrics = None if is_first_report else payload.get("previousMetrics")
+    # EB (Escala de Borg) é sempre inteiro de 0-10 — arredonda logo na entrada
+    # pra que todo texto/tabela sintetizado a partir daqui já saia consistente
+    # (pedido no piloto com o professor).
+    current_metrics = _round_borg(payload.get("currentMetrics", {}))
+    initial_metrics = None if is_first_report else _round_borg(payload.get("initialMetrics"))
     metric_sources = payload.get("metricSources", {})
 
     api_key = os.environ.get("GROQ_API_KEY")
@@ -261,16 +291,16 @@ def generate(payload: dict) -> dict:
         return _generate_via_llm(payload, api_key)
 
     resumo = _build_resumo(device, period, session_count, current_metrics)
-    analise = _build_analise_comparativa(current_metrics, previous_metrics)
+    evolucao = _build_evolucao(current_metrics, initial_metrics)
     if is_first_report:
-        analise = (
-            "Esta é a sessão de referência inicial do paciente — ainda não há "
-            "período anterior para comparação."
+        evolucao = (
+            "Esta é a avaliação inicial do paciente — ainda não há dados anteriores "
+            "para comparação de evolução."
         )
 
     return {
         "resumoSessao": resumo,
-        "analiseComparativa": analise,
+        "evolucao": evolucao,
         "avisoRevisao": AVISO_REVISAO,
         "dadosBrutos": _build_dados_brutos(current_metrics, metric_sources),
         "generatedBy": "template",
@@ -294,8 +324,9 @@ def _generate_via_llm(payload: dict, api_key: str) -> dict:
     device = payload.get("device", "Pitaco")
     period = payload.get("period", {})
     is_first_report = payload.get("isFirstReport", False)
-    current_metrics = payload.get("currentMetrics", {})
-    previous_metrics = payload.get("previousMetrics")
+    # EB (Escala de Borg) é sempre inteiro de 0-10 — ver nota em `generate()`.
+    current_metrics = _round_borg(payload.get("currentMetrics", {}))
+    initial_metrics = _round_borg(payload.get("initialMetrics"))
     patient_context = payload.get("patientContext", {})
     metric_sources = payload.get("metricSources", {})
 
@@ -311,15 +342,17 @@ Primeira sessão do paciente: {is_first_report}
 Métricas do período atual (sigla, nome completo, unidade e valor):
 {_format_metrics_for_prompt(current_metrics)}
 
-Métricas do período anterior (mesmo formato, ou "—" se não houver):
-{_format_metrics_for_prompt(previous_metrics) if previous_metrics else "—"}
+Métricas da avaliação inicial do paciente (mesmo formato, ou "—" se não houver):
+{_format_metrics_for_prompt(initial_metrics) if initial_metrics else "—"}
 
 Use sempre o nome completo de cada métrica entre parênteses na primeira menção
 (ex: "EB (Escala de Borg)"), exatamente como informado acima — não invente ou
-deduza o significado de nenhuma sigla.
+deduza o significado de nenhuma sigla. EB (Escala de Borg) é sempre um número
+inteiro de 0 a 10 — nunca escreva um valor com casas decimais para ela.
 
-Responda em JSON com as chaves: resumoSessao (2-3 parágrafos), analiseComparativa
-(comparação com o período anterior, ou null se for a primeira sessão)."""
+Responda em JSON com as chaves: resumoSessao (2-3 parágrafos), evolucao
+(comparação do estado atual com a avaliação inicial do paciente, cobrindo as
+variáveis DJ, PJ, CGc, FR, PEmax, PImax e EB; ou null se for a primeira sessão)."""
 
     def _fallback_template():
         # Groq indisponível, resposta não-JSON, ou qualquer outra falha na
@@ -327,15 +360,15 @@ Responda em JSON com as chaves: resumoSessao (2-3 parágrafos), analiseComparati
         # erro genérico lá no Node (modelos gratuitos/menores são instáveis).
         session_count = payload.get("sessionCount", 0)
         resumo = _build_resumo(device, period, session_count, current_metrics)
-        analise = _build_analise_comparativa(current_metrics, previous_metrics)
+        evolucao = _build_evolucao(current_metrics, initial_metrics)
         if is_first_report:
-            analise = (
-                "Esta é a sessão de referência inicial do paciente — ainda não há "
-                "período anterior para comparação."
+            evolucao = (
+                "Esta é a avaliação inicial do paciente — ainda não há dados anteriores "
+                "para comparação de evolução."
             )
         return {
             "resumoSessao": resumo,
-            "analiseComparativa": analise,
+            "evolucao": evolucao,
             "avisoRevisao": AVISO_REVISAO,
             "dadosBrutos": _build_dados_brutos(current_metrics, metric_sources),
             "generatedBy": "template",
@@ -377,8 +410,8 @@ Responda em JSON com as chaves: resumoSessao (2-3 parágrafos), analiseComparati
         return None
 
     resumo_llm = _coerce_text(_get_first(parsed, ["resumoSessao", "resumo_sessao", "resumo", "summary"]))
-    analise_llm = _coerce_text(
-        _get_first(parsed, ["analiseComparativa", "analise_comparativa", "analise", "comparativeAnalysis"])
+    evolucao_llm = _coerce_text(
+        _get_first(parsed, ["evolucao", "evolução", "analiseComparativa", "analise_comparativa", "comparativeAnalysis"])
     )
 
     if not resumo_llm:
@@ -389,12 +422,12 @@ Responda em JSON com as chaves: resumoSessao (2-3 parágrafos), analiseComparati
 
     # RF05/FA03 — mitigação do risco de alucinação: confronta o texto gerado
     # com a tendência real das métricas antes de exibir (ver review do PR).
-    objective_trends = _objective_trends(current_metrics, previous_metrics)
-    avisos_coerencia = _check_coherence(resumo_llm, analise_llm, objective_trends, current_metrics)
+    objective_trends = _objective_trends(current_metrics, initial_metrics)
+    avisos_coerencia = _check_coherence(resumo_llm, evolucao_llm, objective_trends, current_metrics)
 
     return {
         "resumoSessao": resumo_llm,
-        "analiseComparativa": analise_llm,
+        "evolucao": evolucao_llm,
         "avisoRevisao": AVISO_REVISAO,
         "dadosBrutos": _build_dados_brutos(current_metrics, metric_sources),
         "generatedBy": "llm",
