@@ -1,0 +1,7 @@
+[run]
+# O scanner do SonarCloud roda dentro de um container (mount do workspace em
+# outro caminho absoluto) — sem isso, o coverage.xml grava o caminho absoluto
+# do runner da GitHub Action (ex: /home/runner/work/...), que não bate com
+# nada dentro do container do Sonar, e a cobertura some silenciosamente (fica
+# 0% mesmo com os testes passando e o coverage.xml existindo).
+relative_files = True

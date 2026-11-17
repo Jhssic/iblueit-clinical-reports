@@ -2,6 +2,8 @@
 report-ai/venv
 report-ai/__pycache__
 report-ai/.pytest_cache
+report-ai/coverage.xml
+report-ai/.coverage
 
 # Scripts de conveniência local
 run-backend.sh
