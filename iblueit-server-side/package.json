@@ -4,7 +4,7 @@
   "description": "",
   "scripts": {
     "start": "func start",
-    "test": "node --test shared/*.test.js"
+    "test": "jest --coverage"
   },
   "dependencies": {
     "axios": "^0.27.2",
@@ -19,5 +19,47 @@
     "validatorjs": "^3.18.1",
     "xmlhttprequest": "^1.8.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>"
+    ],
+    "testMatch": [
+      "**/*.test.js"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "<rootDir>/report-ai/",
+      "<rootDir>/coverage/"
+    ],
+    "modulePathIgnorePatterns": [
+      "<rootDir>/report-ai/"
+    ],
+    "watchPathIgnorePatterns": [
+      "<rootDir>/report-ai/"
+    ],
+    "collectCoverageFrom": [
+      "*/index.js",
+      "shared/**/*.js",
+      "!**/*.test.js",
+      "!**/node_modules/**",
+      "!coverage/**",
+      "!report-ai/**",
+      "!test-utils/**"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageReporters": [
+      [
+        "lcov",
+        {
+          "projectRoot": ".."
+        }
+      ],
+      "text-summary",
+      "text"
+    ]
+  }
 }

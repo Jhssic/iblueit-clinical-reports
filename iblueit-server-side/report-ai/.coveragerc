@@ -5,3 +5,9 @@
 # nada dentro do container do Sonar, e a cobertura some silenciosamente (fica
 # 0% mesmo com os testes passando e o coverage.xml existindo).
 relative_files = True
+# Arquivos de teste não entram na conta (o Sonar também os exclui de
+# sonar.sources), senão inflariam o percentual com código que é o próprio teste.
+omit =
+    */test_*.py
+    test_*.py
+    venv/*
