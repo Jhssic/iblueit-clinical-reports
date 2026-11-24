@@ -668,7 +668,7 @@ const ClinicalReport = () => {
   };
 
   useEffect(() => {
-    loadAll();
+    loadAll().catch((error) => console.error(error));
   }, [context.patientId]);
 
   useEffect(() => {
@@ -676,7 +676,7 @@ const ClinicalReport = () => {
   }, []);
 
   useEffect(() => {
-    if (context.patientId) loadCharts();
+    if (context.patientId) loadCharts().catch((error) => console.error(error));
   }, [device]);
 
   useEffect(() => {

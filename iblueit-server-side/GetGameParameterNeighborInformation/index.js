@@ -12,7 +12,7 @@ module.exports = async function (context, req) {
 
     const utils = require('../shared/utils');
 
-    utils.validateHeaders(req.headers, context);
+    await utils.validateHeaders(req.headers, context);
 
     var isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
 
@@ -89,13 +89,13 @@ module.exports = async function (context, req) {
             })
         })
         arrayConfigurations.push({
-            "stageId": parseInt((arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["stageId"] }, 0)) / GameParametersLength),
-            "phase": parseInt((arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["phase"] }, 0)) / GameParametersLength),
-            "level": parseInt((arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["level"] }, 0)) / GameParametersLength),
+            "stageId": Number.parseInt((arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["stageId"] }, 0)) / GameParametersLength, 10),
+            "phase": Number.parseInt((arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["phase"] }, 0)) / GameParametersLength, 10),
+            "level": Number.parseInt((arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["level"] }, 0)) / GameParametersLength, 10),
             "pacientId": null,
             "pacientName": null,
             "ObjectSpeedFactor": (arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["ObjectSpeedFactor"] }, 0)) / GameParametersLength,
-            "Loops": parseInt((arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["Loops"] }, 0)) / GameParametersLength),
+            "Loops": Number.parseInt((arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["Loops"] }, 0)) / GameParametersLength, 10),
             "HeightIncrement": (arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["HeightIncrement"] }, 0)) / GameParametersLength,
             "HeightUpThreshold": (arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["HeightUpThreshold"] }, 0)) / GameParametersLength,
             "HeightDownThreshold": (arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["HeightDownThreshold"] }, 0)) / GameParametersLength,
@@ -113,5 +113,5 @@ module.exports = async function (context, req) {
 };
 
 function getFloat(value) {
-    return value && parseFloat(value.toString()) ? parseFloat(value.toString()) : 0;
+    return value && Number.parseFloat(value.toString()) ? Number.parseFloat(value.toString()) : 0;
 }

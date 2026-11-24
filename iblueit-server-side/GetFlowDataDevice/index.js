@@ -9,7 +9,7 @@ module.exports = async function (context, req) {
 
     const utils = require('../shared/utils');
 
-    utils.validateHeaders(req.headers, context);
+    await utils.validateHeaders(req.headers, context);
 
     var isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
 

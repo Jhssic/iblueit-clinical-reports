@@ -11,7 +11,7 @@ describe("Página de Código de Envio", () => {
   beforeEach(() => {
     sessionStorage.clear();
     requestGenerateShippingCode.mockReset();
-    Object.assign(navigator, { clipboard: { writeText: jest.fn() } });
+    Object.assign(navigator, { clipboard: { writeText: jest.fn().mockResolvedValue(undefined) } });
   });
 
   it("exibe o código atual e desabilita a geração de um novo", () => {
@@ -21,12 +21,12 @@ describe("Página de Código de Envio", () => {
     expect(screen.getByRole("button", { name: /Gerar novo Código de Envio/ })).toBeDisabled();
   });
 
-  it("copia o código para a área de transferência e notifica", () => {
+  it("copia o código para a área de transferência e notifica", async () => {
     salvarCredenciais({ gameToken: "ABC-123" });
     const { context } = renderWithProviders(<ShippingCode />);
     fireEvent.click(screen.getByTestId("ContentCopyIcon").closest("button"));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith("ABC-123");
-    expect(context.addNotification).toHaveBeenCalledWith("success", "Código copiado");
+    await waitFor(() => expect(context.addNotification).toHaveBeenCalledWith("success", "Código copiado"));
   });
 
   it("gera um novo código quando o usuário ainda não possui", async () => {

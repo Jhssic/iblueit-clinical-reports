@@ -31,7 +31,7 @@ describe("Página Conta do Paciente", () => {
     salvarCredenciais({ gameToken: "tok" });
     getPatientAccount.mockReset();
     requestRegisterUsers.mockReset();
-    Object.assign(navigator, { clipboard: { writeText: jest.fn() } });
+    Object.assign(navigator, { clipboard: { writeText: jest.fn().mockResolvedValue(undefined) } });
   });
 
   it("mostra os dados de acesso quando o paciente já possui conta e permite copiar", async () => {
@@ -42,7 +42,7 @@ describe("Página Conta do Paciente", () => {
     expect(screen.getByLabelText("Senha")).toHaveValue("123");
     fireEvent.click(screen.getByRole("button", { name: /copiar Usuário e Senha/ }));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith("Usuário: maria.p Senha: 123");
-    expect(context.addNotification).toHaveBeenCalledWith("success", "Usuário e Senha copiados");
+    await waitFor(() => expect(context.addNotification).toHaveBeenCalledWith("success", "Usuário e Senha copiados"));
   });
 
   it("mostra o formulário de criação quando não há conta e alterna visibilidade das senhas", async () => {

@@ -24,9 +24,9 @@ const validateUserCredentials = (userCredentials) => {
 
 const getTokenParameters = (Parameter = null) => {
   if (Parameter) {
-    return JSON.parse(sessionStorage.getItem("userCredentials" || '{}'))[Parameter];
+    return JSON.parse(sessionStorage.getItem("userCredentials"))[Parameter];
   }
-  return JSON.parse(sessionStorage.getItem("userCredentials" || '{}'));
+  return JSON.parse(sessionStorage.getItem("userCredentials"));
 }
 
 const updateAuthenticationData = (Parameter, valueParameter) => {

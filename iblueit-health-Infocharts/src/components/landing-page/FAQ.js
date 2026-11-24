@@ -10,10 +10,10 @@ import Typography from '@mui/material/Typography';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 export default function FAQ() {
-  const [expanded, setExpanded] = React.useState(false);
+  const [expanded, setExpanded] = React.useState('');
 
   const handleChange = (panel) => (event, isExpanded) => {
-    setExpanded(isExpanded ? panel : false);
+    setExpanded(isExpanded ? panel : '');
   };
 
   return (

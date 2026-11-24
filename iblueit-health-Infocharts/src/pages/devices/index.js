@@ -10,7 +10,7 @@ const DevicesPage = () => {
   const [historiesCalibrations, setHistoriesCalibrations] = useState([]);
 
   useEffect(() => {
-    if (context.patientId) getHistoryCalibration();
+    if (context.patientId) getHistoryCalibration().catch((error) => console.error(error));
   }, [context.patientId]);
 
   const getHistoryCalibration = async () => {

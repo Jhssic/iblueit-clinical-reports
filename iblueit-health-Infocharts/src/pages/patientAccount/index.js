@@ -49,7 +49,7 @@ const PatientAccount = () => {
 
 
   useEffect(() => {
-    if (context.patientId) validateExistenceOfAnAccount();
+    if (context.patientId) validateExistenceOfAnAccount().catch((error) => console.error(error));
   }, [context.patientId]);
 
   const validateExistenceOfAnAccount = async () => {
@@ -80,14 +80,18 @@ const PatientAccount = () => {
           gameToken: getTokenParameters('gameToken'),
         };
         await requestRegisterUsers(context, userData)
-        validateExistenceOfAnAccount();
+        await validateExistenceOfAnAccount();
       } catch (error) { }
     }
   };
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(`Usuário: ${user} Senha: ${password}`);
-    context.addNotification('success',  'Usuário e Senha copiados');
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(`Usuário: ${user} Senha: ${password}`);
+      context.addNotification('success',  'Usuário e Senha copiados');
+    } catch (error) {
+      context.addNotification('error', 'Não foi possível copiar Usuário e Senha.');
+    }
   }
 
   return (

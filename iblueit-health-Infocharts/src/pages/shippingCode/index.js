@@ -35,9 +35,13 @@ const ShippingCode = () => {
 	const context = useMyContext();
 	const [gameToken, setGameToken] = useState(getTokenParameters('gameToken'));
 
-	const copyToClipboard = () => {
-		navigator.clipboard.writeText(gameToken);
-		context.addNotification('success',  'Código copiado');
+	const copyToClipboard = async () => {
+		try {
+			await navigator.clipboard.writeText(gameToken);
+			context.addNotification('success',  'Código copiado');
+		} catch (error) {
+			context.addNotification('error', 'Não foi possível copiar o código.');
+		}
 	}
 
 	const generateShippingCode = async () => {

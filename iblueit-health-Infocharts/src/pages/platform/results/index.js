@@ -88,7 +88,7 @@ const ResultPage = () => {
 
   useEffect(() => {
     if (context.patientId) {
-      fetchMicroCardsValues();
+      fetchMicroCardsValues().catch((error) => console.error(error));
       initialState();
     }
   }, [context.patientId]);

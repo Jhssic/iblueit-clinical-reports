@@ -82,10 +82,7 @@ export default function Hero() {
             alignSelf: 'center',
             height: { xs: 320, sm: 640 },
             width: '100%',
-            backgroundImage:
-              theme.palette.mode === 'light'
-                ? `url(${backgroundLight})`
-                : `url(${backgroundLight})`,
+            backgroundImage: `url(${backgroundLight})`,
             backgroundSize: 'cover',
             borderRadius: '10px',
             outline: '1px solid',

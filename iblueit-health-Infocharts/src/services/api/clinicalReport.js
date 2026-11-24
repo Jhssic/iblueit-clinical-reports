@@ -98,7 +98,7 @@ export const fetchPlataformSeries = async (patientId, device) => {
   return (response.data.data || []).map((s) => ({
     date: moment(s.playFinish).format("DD/MM"),
     timestamp: new Date(s.playFinish).getTime(),
-    DJ: s.scoreRatio != null ? parseFloat(s.scoreRatio) : null, // ver ressalva acima — mesmo campo usado em shared/clinicalMetrics.js
+    DJ: s.scoreRatio != null ? Number.parseFloat(s.scoreRatio) : null, // ver ressalva acima — mesmo campo usado em shared/clinicalMetrics.js
   }));
 };
 

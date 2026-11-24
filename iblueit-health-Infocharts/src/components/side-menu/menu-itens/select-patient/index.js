@@ -54,7 +54,7 @@ const SelectPatient = ({ patientList = []}) => {
           displayEmpty
           inputProps={{ "aria-label": "Without label" }}
         >
-          {patientList.length && patientList.map((patient) => (
+          {patientList.length > 0 && patientList.map((patient) => (
             <MenuItem
               key={`SelectPatient${patient.id}`}
               value={patient.id}

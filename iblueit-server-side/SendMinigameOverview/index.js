@@ -15,7 +15,7 @@ module.exports = async function (context, req) {
     const utils = require('../shared/utils');
     const validations = require('../shared/Validators');
 
-    utils.validateHeaders(req.headers, context);
+    await utils.validateHeaders(req.headers, context);
 
     var isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
 

@@ -128,9 +128,9 @@ module.exports = async function (context, req) {
 
 
     if (req.query.limit)
-        aggregate.limit(parseInt(req.query.limit))
+        aggregate.limit(Number.parseInt(req.query.limit, 10))
     if (req.query.skip)
-        aggregate.skip(parseInt(req.query.skip));
+        aggregate.skip(Number.parseInt(req.query.skip, 10));
 
     try {
 

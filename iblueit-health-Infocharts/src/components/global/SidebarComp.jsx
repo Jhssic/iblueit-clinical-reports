@@ -27,9 +27,9 @@ const Sidebar = () => {
 
   return (
     <div className={`sidebar ${isOpen ? "" : "closed"} ${isDarkTheme ? 'dark' : 'light'}`}>
-      <div className="toggle-icon" onClick={toggleSidebar}>
+      <button type="button" className="toggle-icon" onClick={toggleSidebar} aria-label="Toggle sidebar">
         <VscLayoutSidebarRight />
-      </div>
+      </button>
       <div className="sidebarmain">
         <ul>
           <Link to={"/inbox"} className="Aheaders">
@@ -60,10 +60,12 @@ const Sidebar = () => {
               <BiLogOut />
             </div>
           </Link>
-          <div className="theme" onClick={toggleTheme}>
-            <li>Theme</li>
-            {isDarkTheme ? <FiSun /> : <FaRegMoon />} 
-          </div>
+          <li>
+            <button type="button" className="theme" onClick={toggleTheme}>
+              Theme
+              {isDarkTheme ? <FiSun /> : <FaRegMoon />}
+            </button>
+          </li>
         </ul>
       </div>
     </div>

@@ -31,7 +31,7 @@ const InformationPanel = () => {
   };
 
   useEffect(() => {
-    if (context.patientId) setPatientInformation();
+    if (context.patientId) setPatientInformation().catch((error) => console.error(error));
   }, [context.patientId]);
 
   return (

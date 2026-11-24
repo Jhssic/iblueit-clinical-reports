@@ -37,8 +37,8 @@ function LayoutPage() {
   }
 
   useEffect(() => {
-    if (!permission) setPatientAccount();
-    else fetchAllPatients();
+    if (!permission) setPatientAccount().catch((error) => console.error(error));
+    else fetchAllPatients().catch((error) => console.error(error));
   }, []);
 
   const SideBar = (

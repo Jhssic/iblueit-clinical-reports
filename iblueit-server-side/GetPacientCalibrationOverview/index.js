@@ -65,9 +65,9 @@ module.exports = async function (context, req) {
             $lte: new Date(`${req.query.dataFim} 23:59:59:999 UTC`).toISOString("yyyy-MM-ddThh:mm:ss.msZ")
         };
     if (req.query.limit)
-        findOptionsObj.limit = parseInt(req.query.limit);
+        findOptionsObj.limit = Number.parseInt(req.query.limit, 10);
     if (req.query.skip)
-        findOptionsObj.skip = parseInt(req.query.skip);
+        findOptionsObj.skip = Number.parseInt(req.query.skip, 10);
     if (req.query.sort == "asc")
         findOptionsObj.sort = { created_at: 1 };
 

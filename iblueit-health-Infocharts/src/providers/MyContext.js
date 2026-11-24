@@ -24,7 +24,7 @@ export const MyContext = (props) => {
   const addNotification = (type, message) => {
     let lastIndex = notificationIndex;
     for (const key in notification) if (key => lastIndex) lastIndex = key
-    lastIndex = parseInt(lastIndex) + 1;
+    lastIndex = Number.parseInt(lastIndex, 10) + 1;
 
     setNotification({ ...notification, [lastIndex]: { type, message } })
     setTimeout(() => { setNotificationIndex(lastIndex); }, 5000)

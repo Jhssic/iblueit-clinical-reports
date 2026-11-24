@@ -116,7 +116,7 @@ const GameConfigurationCreatePage = () => {
   }
 
   const maxAndMinInput = (functionName, event, max = 5, min = 1) => {
-    const value = parseFloat(event.target.value, 10);
+    const value = Number.parseFloat(event.target.value);
     if (value > max) {
       return functionName(max.toFixed(2));
     } else if (value < min) {
@@ -129,7 +129,7 @@ const GameConfigurationCreatePage = () => {
   }
 
   const maxAndMinInputInt = (functionName, event, max = 5, min = 1) => {
-    const value = parseFloat(event.target.value, 10);
+    const value = Number.parseFloat(event.target.value);
     if (value > max) {
       return functionName(max.toFixed(0));
     } else if (value < min) {
