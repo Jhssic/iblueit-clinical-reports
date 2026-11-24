@@ -14,8 +14,7 @@ import Hero from '../../components/landing-page/Hero';
 import Highlights from '../../components/landing-page/Highlights';
 // import Pricing from '../../components/landing-page/Pricing';
 import Features from '../../components/landing-page/Features';
-import Testimonials from '../../components/landing-page/Testimonials';
-import FAQ from '../../components/landing-page/FAQ';
+import Faq from '../../components/landing-page/FAQ';
 import Footer from '../../components/landing-page/Footer';
 import getLPTheme from '../../pages/home/getLPTheme';
 
@@ -63,7 +62,7 @@ import getLPTheme from '../../pages/home/getLPTheme';
 
 export default function LandingPage() {
   const [mode, setMode] = React.useState('light');
-  const [showCustomTheme, setShowCustomTheme] = React.useState(true);
+  const [showCustomTheme] = React.useState(true);
   const LPtheme = createTheme(getLPTheme(mode));
   const defaultTheme = createTheme({ palette: { mode } });
 
@@ -86,7 +85,7 @@ export default function LandingPage() {
         {/* <Testimonials /> */}
         <Highlights />
         <Divider />
-        <FAQ />
+        <Faq />
         <Divider />
         {/* <Pricing /> */}
         {/* <LogoCollection /> */}

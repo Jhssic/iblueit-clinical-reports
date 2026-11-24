@@ -1,4 +1,4 @@
-module.exports = async function (context, req) {
+module.exports = async function getPacient(context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
     mongoose.connect(DATABASE);
@@ -10,7 +10,7 @@ module.exports = async function (context, req) {
 
     const utils = require('../shared/utils');
 
-    var isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
+    const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
 
     if (!isVerifiedGameToken) {
         context.res = {
@@ -42,10 +42,6 @@ module.exports = async function (context, req) {
     //     _id: req.params.pacientId,
     //     _gameToken: req.headers.gametoken
     // }
-
-    const findObj = {
-        _id: req.params.pacientId
-    }
 
     const aggregate = PacientModel.aggregate();
     aggregate.match({ _id: mongoose.Types.ObjectId(req.params.pacientId), _gameToken: req.headers.gametoken });

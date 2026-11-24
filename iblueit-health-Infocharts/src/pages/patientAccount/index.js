@@ -56,8 +56,8 @@ const PatientAccount = () => {
     const patientAccount = await getPatientAccount(context);
 
     setThereIsAccount(!!patientAccount)
-    setUser((patientAccount && patientAccount.username) ? patientAccount.username : '')
-    setPassword((patientAccount && patientAccount.password) ? patientAccount.password : '')
+    setUser(patientAccount?.username || '')
+    setPassword(patientAccount?.password || '')
   }
 
 
@@ -81,7 +81,9 @@ const PatientAccount = () => {
         };
         await requestRegisterUsers(context, userData)
         await validateExistenceOfAnAccount();
-      } catch (error) { }
+      } catch (error) {
+        console.error(error);
+      }
     }
   };
 
@@ -90,6 +92,7 @@ const PatientAccount = () => {
       await navigator.clipboard.writeText(`Usuário: ${user} Senha: ${password}`);
       context.addNotification('success',  'Usuário e Senha copiados');
     } catch (error) {
+      console.error(error);
       context.addNotification('error', 'Não foi possível copiar Usuário e Senha.');
     }
   }

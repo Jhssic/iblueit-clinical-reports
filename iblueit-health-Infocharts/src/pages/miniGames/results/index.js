@@ -75,7 +75,7 @@ const MiniGamesResults = () => {
     event.preventDefault();
     if (finalDate && startDate && moment(finalDate).isBefore(startDate)) {
       context.addNotification('error', 'A data final não pode ser menor do que a data inicial!');
-      setGraphData([...[]]);
+      setGraphData([]);
     } else {
       try {
         const filters = {
@@ -86,20 +86,22 @@ const MiniGamesResults = () => {
             dataFim: moment(finalDate).format('DD-MM-YYYY'),
           } : {}
         };
-        const typeGraph = !!(historyCalibration === 'includeHistoryCalibration');
+        const typeGraph = historyCalibration === 'includeHistoryCalibration';
         const graphData = await getGeneralStatisticsDataFromTheMiniGame(context, filters, typeGraph);
         setGraphData([...graphData]);
         setTypeGraph(typeGraph)
         if (!graphData.length) {
           context.addNotification('error', 'Não existe histórico para os filtros selecionados.');
           setWarning('Não existe histórico para os filtros selecionados.');
+        } else if (miniGame === 'WaterGame') {
+          setTableLegend_Y('Pico Inspiratório L/min');
         } else {
-          if (miniGame === 'WaterGame') setTableLegend_Y('Pico Inspiratório L/min');
-          else setTableLegend_Y('Pico Expiratório L/min');
+          setTableLegend_Y('Pico Expiratório L/min');
         }
       } catch (error) {
-        setGraphData([...[]]);
-        setTypeGraph(!!(historyCalibration === 'includeHistoryCalibration'));
+        console.error(error);
+        setGraphData([]);
+        setTypeGraph(historyCalibration === 'includeHistoryCalibration');
       }
     }
   };

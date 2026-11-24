@@ -1,4 +1,4 @@
-module.exports = async function (context, req) {
+module.exports = async function sendPlataformOverview(context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
     mongoose.connect(DATABASE);
@@ -14,10 +14,9 @@ module.exports = async function (context, req) {
     const PlaySessionModel = mongoose.model('PlaySession');
 
     const validations = require('../shared/Validators');
-    const validate = require("validate.js");
     const utils = require('../shared/utils');
 
-    var isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
+    const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
 
     if (!isVerifiedGameToken) {
         context.res = {
@@ -61,7 +60,7 @@ module.exports = async function (context, req) {
 
     plataformOverviewReq._gameToken = req.headers.gametoken;
 
-    var flowDataDevicesReq = req.body.flowDataDevices;
+    const flowDataDevicesReq = req.body.flowDataDevices;
 
     plataformOverviewReq.devices = flowDataDevicesReq.map(x => x.deviceName);
 
@@ -69,8 +68,8 @@ module.exports = async function (context, req) {
     plataformOverviewReq.flowDataDevicesValues = flowDataDevicesReq.map(function (element) {
         return {
             deviceName: element.deviceName,
-            maxFlowValue: element.flowData.reduce((max, el) => (el.flowValue > max ? el.flowValue : max), element.flowData[0].flowValue),
-            minFlowValue: element.flowData.reduce((min, el) => (el.flowValue < min ? el.flowValue : min), element.flowData[0].flowValue),
+            maxFlowValue: element.flowData.reduce((max, el) => Math.max(el.flowValue, max), element.flowData[0].flowValue),
+            minFlowValue: element.flowData.reduce((min, el) => Math.min(el.flowValue, min), element.flowData[0].flowValue),
             meanFlowValue: element.flowData.reduce((acc, value) => (acc + Number.parseFloat(value.flowValue)), 0) / element.flowData.length
         }
     });

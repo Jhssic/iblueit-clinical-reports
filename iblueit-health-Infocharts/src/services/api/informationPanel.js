@@ -25,13 +25,15 @@ const getPatientInformation = async (context) => {
     const patientInformation = result.data.data;
     const newPatientData = [];
     if (patientInformation) {
-      newPatientData.push({ fieldName: 'Nome', fieldValue: patientInformation.name })
-      newPatientData.push({ fieldName: 'Sexo', fieldValue: translateSex(patientInformation.sex) })
-      newPatientData.push({ fieldName: 'Condição', fieldValue: translateCondition(patientInformation.condition) })
-      newPatientData.push({ fieldName: 'Data de Nascimento', fieldValue: moment(patientInformation.birthday).format("L") })
-      newPatientData.push({ fieldName: 'Peso', fieldValue: `${patientInformation.weight} kg` })
-      newPatientData.push({ fieldName: 'Altura', fieldValue: `${patientInformation.height}  cm` })
-      newPatientData.push({ fieldName: 'Observações', fieldValue: patientInformation.observations === 'None' ? '-' : patientInformation.observations })
+      newPatientData.push(
+        { fieldName: 'Nome', fieldValue: patientInformation.name },
+        { fieldName: 'Sexo', fieldValue: translateSex(patientInformation.sex) },
+        { fieldName: 'Condição', fieldValue: translateCondition(patientInformation.condition) },
+        { fieldName: 'Data de Nascimento', fieldValue: moment(patientInformation.birthday).format("L") },
+        { fieldName: 'Peso', fieldValue: `${patientInformation.weight} kg` },
+        { fieldName: 'Altura', fieldValue: `${patientInformation.height}  cm` },
+        { fieldName: 'Observações', fieldValue: patientInformation.observations === 'None' ? '-' : patientInformation.observations },
+      );
     }
     return newPatientData;
   } catch (error) {

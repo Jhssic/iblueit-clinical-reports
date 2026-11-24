@@ -1,7 +1,6 @@
 const { db } = require('../shared/Pacient');
-const { resolveContent } = require('nodemailer/lib/shared');
 
-module.exports = async function (context, req) {
+module.exports = async function deletePacient(context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
     mongoose.connect(DATABASE);
@@ -23,7 +22,7 @@ module.exports = async function (context, req) {
 
     const utils = require('../shared/utils');
 
-    var isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
+    const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
 
     if (!isVerifiedGameToken) {
         context.res = {
@@ -62,7 +61,6 @@ module.exports = async function (context, req) {
                 .then(_session => {
                     session = _session;
                     session.startTransaction();
-                    return;
                 })
                 .then(async () => { return await PacientModel.deleteOne({ _id: mongoose.Types.ObjectId(req.params.pacientId) }).session(session) })
                 .then(async () => { return await PlataformOverviewModel.deleteMany({ pacientId: req.params.pacientId }).session(session) })

@@ -36,11 +36,12 @@ describe("<PlatformGraphComparative />", () => {
   it("esconde a faixa esperada ao clicar na legenda e reexibe no segundo clique", () => {
     const { container } = renderGrafico({ viewType: 2 });
     const item = () => screen.getByText(NOME_ESPERADO).closest("li");
+    const botao = () => screen.getByRole("button", { name: NOME_ESPERADO });
     expect(item()).toHaveClass("legend");
-    fireEvent.click(item());
+    fireEvent.click(botao());
     expect(item()).toHaveClass("inactive");
     expect(container.querySelectorAll(".recharts-area").length).toBe(0);
-    fireEvent.click(item());
+    fireEvent.click(botao());
     expect(item()).toHaveClass("legend");
   });
 
@@ -50,11 +51,11 @@ describe("<PlatformGraphComparative />", () => {
     expect(screen.getByText("Porcentagem máxima")).toBeInTheDocument();
     const barras = () => container.querySelectorAll(".recharts-bar").length;
     expect(barras()).toBe(3);
-    fireEvent.click(screen.getByText("Razão Comum de Pacientes Selecionados").closest("li"));
-    fireEvent.click(screen.getByText("Porcentagem máxima").closest("li"));
+    fireEvent.click(screen.getByText("Razão Comum de Pacientes Selecionados").closest("button"));
+    fireEvent.click(screen.getByText("Porcentagem máxima").closest("button"));
     expect(barras()).toBe(1);
     // a série do paciente não é ocultável
-    fireEvent.click(screen.getByText("Picos do paciente").closest("li"));
+    fireEvent.click(screen.getByText("Picos do paciente").closest("button"));
     expect(barras()).toBe(1);
   });
 

@@ -124,6 +124,8 @@ async function sendSessions(headers, pacientId, scores) {
       BorgScale: 3,
     };
 
+    // Sequencial de propósito: o backend numera a PlaySession comparando com a
+    // última sessão salva do paciente, então os envios precisam chegar em ordem.
     await axios.post(`${BASE_URL}/plataforms`, payload, { headers });
   }
 }
@@ -134,11 +136,16 @@ async function main() {
   const headers = { gametoken: gameToken };
   console.log("gameToken obtido (" + String(gameToken).length + " caracteres)");
 
-  for (const def of PATIENTS) {
+  // Pacientes são independentes entre si: semeia todos em paralelo e só
+  // imprime o resumo no fim, na ordem de PATIENTS.
+  const seeded = await Promise.all(PATIENTS.map(async (def) => {
     const pacientId = await createPatient(headers, def);
     await sendSessions(headers, pacientId, def.scores);
+    return { def, pacientId };
+  }));
+  seeded.forEach(({ def, pacientId }) => {
     console.log(`${def.name} — pacientId: ${pacientId} — ${def.scores.length} sessões`);
-  }
+  });
 
   console.log("\nSeed concluído.");
 }

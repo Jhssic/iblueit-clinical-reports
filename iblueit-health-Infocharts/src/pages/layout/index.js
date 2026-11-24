@@ -33,7 +33,9 @@ function LayoutPage() {
       context.setPatientName(result[0].name || '');
       context.setPatientBirthDate(result[0].birthDate || '');
       context.setPatientId(result[0].id || '');
-    } catch (error) { }
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   useEffect(() => {
@@ -42,48 +44,44 @@ function LayoutPage() {
   }, []);
 
   const SideBar = (
-    <>
-      <Box
-        component="nav"
-        sx={{ width: { md: Constants.DRAWER_WIDTH }, flexShrink: { md: 0 } }}
-        aria-label="mailbox folders"
+    <Box
+      component="nav"
+      sx={{ width: { md: Constants.DRAWER_WIDTH }, flexShrink: { md: 0 } }}
+      aria-label="mailbox folders"
+    >
+      <TemporaryDrawer
+        width={Constants.DRAWER_WIDTH}
+        open={mobileOpen}
+        onCloseCallback={() => setMobileOpen(!mobileOpen)}
       >
-        <TemporaryDrawer
-          width={Constants.DRAWER_WIDTH}
-          open={mobileOpen}
-          onCloseCallback={() => setMobileOpen(!mobileOpen)}
-        >
-          <MenuItens
-            permission={permission}
-            patientList={patientList}
-          />
-        </TemporaryDrawer>
-        <PermanentDrawer
-          width={Constants.DRAWER_WIDTH}
-        >
-          <MenuItens
-            permission={permission}
-            patientList={patientList}
-          />
-        </PermanentDrawer> 
-      </Box>
-    </>
+        <MenuItens
+          permission={permission}
+          patientList={patientList}
+        />
+      </TemporaryDrawer>
+      <PermanentDrawer
+        width={Constants.DRAWER_WIDTH}
+      >
+        <MenuItens
+          permission={permission}
+          patientList={patientList}
+        />
+      </PermanentDrawer> 
+    </Box>
   );
 
   const MainContent = (
-    <>
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          p: 3,
-          width: { sm: `calc(100% - ${Constants.DRAWER_WIDTH}px)` }
-        }}
-      >
-        <Toolbar />
-        <Outlet />
-      </Box>
-    </>
+    <Box
+      component="main"
+      sx={{
+        flexGrow: 1,
+        p: 3,
+        width: { sm: `calc(100% - ${Constants.DRAWER_WIDTH}px)` }
+      }}
+    >
+      <Toolbar />
+      <Outlet />
+    </Box>
   );
 
   return (

@@ -1,6 +1,6 @@
 /* eslint-disable no-loop-func */
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 
 export const Context = React.createContext({});
 
@@ -21,35 +21,35 @@ export const MyContext = (props) => {
     }
   }, [notificationIndex]);
 
-  const addNotification = (type, message) => {
+  const addNotification = useCallback((type, message) => {
     let lastIndex = notificationIndex;
     for (const key in notification) if (key => lastIndex) lastIndex = key
     lastIndex = Number.parseInt(lastIndex, 10) + 1;
 
     setNotification({ ...notification, [lastIndex]: { type, message } })
     setTimeout(() => { setNotificationIndex(lastIndex); }, 5000)
-  }
+  }, [notification, notificationIndex]);
 
-  const resetState = () => {
+  const resetState = useCallback(() => {
     setLoading(false);
     setNotification();
     setNotificationIndex(0);
     setPatientId();
     setPatientName();
     setPatientBirthDate();
-  }
+  }, []);
+
+  const contextValue = useMemo(() => ({
+    resetState,
+    loading, setLoading,
+    notification, addNotification,
+    patientId, setPatientId,
+    patientName, setPatientName,
+    patientBirthDate, setPatientBirthDate
+  }), [resetState, loading, notification, addNotification, patientId, patientName, patientBirthDate]);
 
   return (
-    <Context.Provider
-      value={{
-        resetState,
-        loading, setLoading,
-        notification, addNotification,
-        patientId, setPatientId,
-        patientName, setPatientName,
-        patientBirthDate, setPatientBirthDate
-      }}
-    >
+    <Context.Provider value={contextValue}>
       {props.children}
     </Context.Provider>
   );

@@ -1,4 +1,4 @@
-module.exports = async function (context, req) {
+module.exports = async function loginAccount(context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
     mongoose.connect(DATABASE);
@@ -68,24 +68,22 @@ module.exports = async function (context, req) {
                 return;
             }
         }
-        else {
-            if(userAccountReq.password != user.password){
-                context.res = {
-                    status: 401,
-                    body: utils.createResponse(false,
-                        false,
-                        "Senha inválida!.",
-                        null,
-                        null)
-                }
-                context.done();
-                return;
+        else if (userAccountReq.password != user.password) {
+            context.res = {
+                status: 401,
+                body: utils.createResponse(false,
+                    false,
+                    "Senha inválida!.",
+                    null,
+                    null)
             }
+            context.done();
+            return;
         }
         
 
-        var authTime = new Date();
-        var authExpirationTime = new Date(authTime);
+        const authTime = new Date();
+        const authExpirationTime = new Date(authTime);
         authExpirationTime.setHours(authExpirationTime.getHours() + 2);
 
         context.res = {

@@ -42,8 +42,8 @@ const CalibrationHistoryPage = () => {
   const [device, setDevice] = useState("Pitaco");
   const [exercise, setExercise] = useState("RespiratoryFrequency");
   const [exerciseAfterRequest, setExerciseAfterRequest] = useState("RespiratoryFrequency");
-  const [startDate, setStartDate] = useState();
-  const [finalDate, setFinalDate] = useState();
+  const [, setStartDate] = useState();
+  const [, setFinalDate] = useState();
 
   const initialState = () => {
     setWarning('Selecione os filtros desejados.')

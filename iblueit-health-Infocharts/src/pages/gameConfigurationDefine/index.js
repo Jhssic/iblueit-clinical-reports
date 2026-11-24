@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Box, Typography } from "@mui/material";
-import GameParameterCard from "../../components/game-parameter-card";
-import { createGameParameter, getGameParameter } from "../../services/api/gameParameter";
+import { createGameParameter } from "../../services/api/gameParameter";
 import { useMyContext } from "../../providers/MyContext";
 
 import { makeStyles } from "@mui/styles";
@@ -30,7 +29,6 @@ const GameConfigurationCreatePage = () => {
 
   const classes = useStyles();
   const [phase, setPhase] = useState('');
-  const [stageId, setStageId] = useState('');
   const [level, setLevel] = useState('');
   const [Loops, setLoops] = useState('');
   const [objectSpeedFactor, setObjectSpeedFactor] = useState('');
@@ -40,35 +38,6 @@ const GameConfigurationCreatePage = () => {
   const [sizeIncrement, setSizeIncrement] = useState('');
   const [sizeUpThreshold, setSizeUpThreshold] = useState('');
   const [sizeDownThreshold, setSizeDownThreshold] = useState('');
-
-  useEffect(() => {
-    const setInputsPacientGameParameter = (pacientGameParameter) => {
-      if (pacientGameParameter) {
-        setPhase(pacientGameParameter?.phase || 1);
-        setStageId(pacientGameParameter?.stageId || 1);
-        setLevel(pacientGameParameter?.level || 1);
-        setLoops(pacientGameParameter?.Loops || 6);
-        setObjectSpeedFactor(pacientGameParameter?.ObjectSpeedFactor?.$numberDecimal || 1.0);
-        setHeightIncrement(pacientGameParameter?.HeightIncrement?.$numberDecimal || 0.0);
-        setHeightUpThreshold(pacientGameParameter?.HeightUpThreshold || 0);
-        setHeightDownThreshold(pacientGameParameter?.HeightDownThreshold || 0);
-        setSizeIncrement(pacientGameParameter?.SizeIncrement?.$numberDecimal || 0.0);
-        setSizeUpThreshold(pacientGameParameter?.SizeUpThreshold || 0);
-        setSizeDownThreshold(pacientGameParameter?.SizeDownThreshold || 0);
-      }
-    }
-    // async function getGameParameterNeighbor() {
-    //   context.setLoading(true);
-    //   const pacientGameParameteResult = await getGameParameter(context.patientId)
-    //   setInputsPacientGameParameter(pacientGameParameteResult.data.data[0])
-    //   const result = await fetchGameParameterNeighbor(context.patientId);
-    //   setGameParameterNeighborInformations([...result.data.data]);
-    //   context.setLoading(false);
-    // };
-    // if (context.patientId) {
-    //   getGameParameterNeighbor();
-    // }
-  }, [context.patientId]);
 
   if (!context.patientId) {
     return (<Typography variant="h2" sx={{ fontSize: 20 }}>Um paciente precisa ser selecionado!</Typography>);
@@ -111,7 +80,9 @@ const GameConfigurationCreatePage = () => {
         };
         await createGameParameter(context, gameParameter)
         context.addNotification('success', 'Salvo com Sucesso');
-      } catch (error) { }
+      } catch (error) {
+        console.error(error);
+      }
     };
   }
 

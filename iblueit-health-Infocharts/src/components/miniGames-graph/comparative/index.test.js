@@ -23,12 +23,12 @@ describe("<MiniGamesGraphComparative />", () => {
     render(<MiniGamesGraphComparative tableLegend_X="Picos do paciente" tableLegend_Y="Y" data={[]} />);
     const itemEsperado = screen.getByText(NOME_ESPERADO).closest("li");
     expect(itemEsperado).toHaveClass("legend");
-    fireEvent.click(itemEsperado);
+    fireEvent.click(screen.getByText(NOME_ESPERADO).closest("button"));
     expect(screen.getByText(NOME_ESPERADO).closest("li")).toHaveClass("inactive");
     // clicar no item do paciente não altera o estado
-    fireEvent.click(screen.getByText("Picos do paciente").closest("li"));
+    fireEvent.click(screen.getByText("Picos do paciente").closest("button"));
     expect(screen.getByText(NOME_ESPERADO).closest("li")).toHaveClass("inactive");
-    fireEvent.click(screen.getByText(NOME_ESPERADO).closest("li"));
+    fireEvent.click(screen.getByText(NOME_ESPERADO).closest("button"));
     expect(screen.getByText(NOME_ESPERADO).closest("li")).toHaveClass("legend");
   });
 

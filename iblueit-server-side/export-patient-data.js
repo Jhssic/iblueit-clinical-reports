@@ -8,7 +8,7 @@
  */
 
 const mongoose = require('mongoose');
-const fs = require('fs');
+const fs = require('node:fs');
 
 const DATABASE = process.env.MongoDbAtlas || require('./local.settings.json').Values.MongoDbAtlas;
 
@@ -33,16 +33,22 @@ async function main() {
   const PlataformOverviewModel = mongoose.model('PlataformOverview');
   const GameParameterModel = mongoose.model('GameParameter');
 
+  // As consultas de cada paciente (e entre pacientes) são só leituras
+  // independentes; o resultado é montado depois, na ordem de pacientIds.
+  const exported = await Promise.all(pacientIds.map(async (pacientId) => {
+    const [pacient, plataformOverviews, gameParameters] = await Promise.all([
+      PacientModel.findById(pacientId),
+      PlataformOverviewModel
+        .find({ pacientId })
+        .populate('flowDataDevicesId')
+        .sort({ created_at: 1 }),
+      GameParameterModel.find({ pacientId }).sort({ created_at: 1 }),
+    ]);
+    return { pacientId, pacient, plataformOverviews, gameParameters };
+  }));
+
   const output = {};
-
-  for (const pacientId of pacientIds) {
-    const pacient = await PacientModel.findById(pacientId);
-    const plataformOverviews = await PlataformOverviewModel
-      .find({ pacientId })
-      .populate('flowDataDevicesId')
-      .sort({ created_at: 1 });
-    const gameParameters = await GameParameterModel.find({ pacientId }).sort({ created_at: 1 });
-
+  for (const { pacientId, pacient, plataformOverviews, gameParameters } of exported) {
     output[pacientId] = {
       pacient,
       plataformOverviews,

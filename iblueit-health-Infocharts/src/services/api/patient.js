@@ -19,7 +19,7 @@ const fetchAll = async (context) => {
     }));
   } catch (error) {
     context.addNotification('error', extractMessage(error, ''));
-    throw 'erro';
+    throw new Error('erro');
   } finally {
     context.setLoading(false);
   }

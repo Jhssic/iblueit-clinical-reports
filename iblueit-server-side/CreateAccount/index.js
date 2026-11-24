@@ -1,4 +1,4 @@
-module.exports = async function (context, req) {
+module.exports = async function createAccount(context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
     mongoose.connect(DATABASE);
@@ -78,7 +78,7 @@ module.exports = async function (context, req) {
             }
         }
 
-        var newUser = new UserAccountModel({
+        const newUser = new UserAccountModel({
             fullname: userAccountReq.fullname,
             username: userAccountReq.username,
             password: userAccountReq.role == "Administrator" ? bcrypt.hashSync(userAccountReq.password, 10) : userAccountReq.password, 

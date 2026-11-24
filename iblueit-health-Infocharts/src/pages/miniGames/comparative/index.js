@@ -101,17 +101,16 @@ const MiniGamesComparative = () => {
       if (!graphData.length) {
         context.addNotification('error', 'Não existe histórico para os filtros selecionados.');
         setWarning('Não existe histórico para os filtros selecionados.');
+      } else if (miniGame === 'WaterGame') {
+        setTableLegend_Y('Pico Inspiratório (L/min)');
+        setTableLegend_X('Picos Inspiratório do paciente selecionado');
       } else {
-        if (miniGame === 'WaterGame') {
-          setTableLegend_Y('Pico Inspiratório (L/min)');
-          setTableLegend_X('Picos Inspiratório do paciente selecionado');
-        } else {
-          setTableLegend_Y('Pico Expiratório (L/min)')
-          setTableLegend_X('Picos Expiratórios do paciente selecionado');
-        }
+        setTableLegend_Y('Pico Expiratório (L/min)')
+        setTableLegend_X('Picos Expiratórios do paciente selecionado');
       }
     } catch (error) {
-      setGraphData([...[]])
+      console.error(error);
+      setGraphData([])
     }
   };
 

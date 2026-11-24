@@ -16,7 +16,6 @@ const fetchGameParameterNeighbor = async (pacientId) => {
         pacientId: pacientId
       }
     });
-    // TODO: FAZER UM CATCH AQUI PARA QUANDO NAO TIVER VIZINHOS
     return result;
   } catch (error) {
     console.log(error);
@@ -37,7 +36,6 @@ const getGameParameter = async (pacientId) => {
         pacientId: pacientId
       }
     });
-    // TODO: FAZER UM CATCH AQUI PARA QUANDO NAO TIVER VIZINHOS
     return result;
   } catch (error) {
     console.log(error);
@@ -61,6 +59,7 @@ const createGameParameter = async (pacientId, context, gameParameter) => {
     });
     return result;
   } catch (error) {
+    console.error(error);
     return []
   } finally {
     context.setLoading(false);

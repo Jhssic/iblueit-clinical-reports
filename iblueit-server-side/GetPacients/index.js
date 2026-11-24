@@ -1,4 +1,4 @@
-module.exports = async function (context, req) {
+module.exports = async function getPacients(context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
     mongoose.connect(DATABASE);
@@ -10,7 +10,7 @@ module.exports = async function (context, req) {
 
     const utils = require('../shared/utils');
 
-    var isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
+    const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
 
     if (!isVerifiedGameToken) {
         context.res = {
@@ -70,62 +70,62 @@ module.exports = async function (context, req) {
 
     aggregate.append(matchOperators);
 
-    if (req.query.sort == "asc")
+    if (req.query.sort == "asc") {
         aggregate.sort({ name: 1 })
-    else
+    } else {
         aggregate.sort({ name: -1 })
+    }
 
-        aggregate.lookup({
-            from: 'playsessions',
-            'let': {
-                id: '$_id'
-            },
+    aggregate.lookup({
+        from: 'playsessions',
+        'let': {
+            id: '$_id'
+        },
+        pipeline: [
+            {
+                $match: {
+                    $expr: {
+                        $and: [
+                            { $eq: [{ $toObjectId: '$pacientId' }, '$$id'] }
+                        ]
+                    }
+                }
+            }
+        ],
+        as: 'playSessions'
+    });
+
+    // RF09: indicador de status (Estável/Atenção/Crítico) por paciente, com
+    // base no relatório clínico (não arquivado) mais recente — mesmos dados
+    // que alimentam o getPatientStatus() da tela de Relatório Clínico.
+    aggregate.append({
+        $lookup: {
+            from: 'clinicalreports',
+            'let': { id: { $toString: '$_id' } },
             pipeline: [
                 {
                     $match: {
                         $expr: {
                             $and: [
-                                { $eq: [{ $toObjectId: '$pacientId' }, '$$id'] }
+                                { $eq: ['$pacientId', '$$id'] },
+                                { $eq: ['$archived', false] },
                             ]
                         }
                     }
-                }
+                },
+                { $sort: { created_at: -1 } },
+                { $limit: 1 },
+                { $project: { alerts: 1, currentMetrics: 1, previousMetrics: 1 } },
             ],
-            as: 'playSessions'
-        });
-
-        // RF09: indicador de status (Estável/Atenção/Crítico) por paciente, com
-        // base no relatório clínico (não arquivado) mais recente — mesmos dados
-        // que alimentam o getPatientStatus() da tela de Relatório Clínico.
-        aggregate.append({
-            $lookup: {
-                from: 'clinicalreports',
-                'let': { id: { $toString: '$_id' } },
-                pipeline: [
-                    {
-                        $match: {
-                            $expr: {
-                                $and: [
-                                    { $eq: ['$pacientId', '$$id'] },
-                                    { $eq: ['$archived', false] },
-                                ]
-                            }
-                        }
-                    },
-                    { $sort: { created_at: -1 } },
-                    { $limit: 1 },
-                    { $project: { alerts: 1, currentMetrics: 1, previousMetrics: 1 } },
-                ],
-                as: 'latestClinicalReport'
-            }
-        });
-        aggregate.append({
-            $addFields: {
-                latestReport: { $arrayElemAt: ['$latestClinicalReport', 0] }
-            }
-        });
-        aggregate.append({ $project: { latestClinicalReport: 0 } });
-
+            as: 'latestClinicalReport'
+        }
+    });
+    aggregate.append({
+        $addFields: {
+            latestReport: { $arrayElemAt: ['$latestClinicalReport', 0] }
+        }
+    });
+    aggregate.append({ $project: { latestClinicalReport: 0 } });
 
     if (req.query.limit)
         aggregate.limit(Number.parseInt(req.query.limit, 10))

@@ -1,4 +1,4 @@
-module.exports = async function (context, req) {
+module.exports = async function getPacientCalibrationStatistics(context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
     mongoose.connect(DATABASE);
@@ -6,11 +6,10 @@ module.exports = async function (context, req) {
 
     //PlataformOverview Schema
     require('../shared/CalibrationOverview');
-    const CalibrationOverviewModel = mongoose.model('CalibrationOverview');
 
     const utils = require('../shared/utils');
 
-    var isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
+    const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
 
     if (!isVerifiedGameToken) {
         context.res = {

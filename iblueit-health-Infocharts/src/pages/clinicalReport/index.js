@@ -127,12 +127,12 @@ const formatMetricValue = (key, value) => {
 // métrica nessa lista nunca vai aparecer, não importa o período escolhido —
 // diferente de algo como CGc, que só falta porque não houve sessão daquele
 // tipo no período selecionado (e pode aparecer trocando o período).
-const METRICS_SEM_FONTE_NO_ECOSSISTEMA = ["SpO2min"];
+const METRICS_SEM_FONTE_NO_ECOSSISTEMA = new Set(["SpO2min"]);
 
 const describeMissingFields = (missingFields) => {
-  if (!missingFields || !missingFields.length) return [];
-  const semFonte = missingFields.filter((f) => METRICS_SEM_FONTE_NO_ECOSSISTEMA.includes(f));
-  const semDadoNoPeriodo = missingFields.filter((f) => !METRICS_SEM_FONTE_NO_ECOSSISTEMA.includes(f));
+  if (!missingFields?.length) return [];
+  const semFonte = missingFields.filter((f) => METRICS_SEM_FONTE_NO_ECOSSISTEMA.has(f));
+  const semDadoNoPeriodo = missingFields.filter((f) => !METRICS_SEM_FONTE_NO_ECOSSISTEMA.has(f));
   const linhas = [];
   if (semDadoNoPeriodo.length) {
     linhas.push(`Sem dado no período selecionado: ${semDadoNoPeriodo.join(", ")} — tente um período diferente.`);
@@ -285,6 +285,323 @@ const pdfAddNoteBox = (doc, { title, lines, bg, border, text }, y, pageWidth, pa
   return cursor + boxHeight + 16;
 };
 
+const describeGeneratedBy = (report) =>
+  report.generatedBy === "llm" ? "texto via LLM" : "texto via template";
+
+const PDF_STATUS_COLORS = {
+  "Crítico": [198, 40, 40],
+  "Atenção": [230, 81, 0],
+  "Estável": [46, 125, 50],
+};
+
+// Status rápido do paciente (Estável/Atenção/Crítico), alinhado à direita
+const pdfAddStatusBadge = (doc, report, y, pageWidth) => {
+  const patientStatus = getPatientStatus(report);
+  if (!patientStatus) return;
+  const statusRgb = PDF_STATUS_COLORS[patientStatus.label] || [117, 117, 117];
+  doc.setFontSize(10);
+  doc.setFont(undefined, "bold");
+  const statusTextWidth = doc.getTextWidth(patientStatus.label) + 16;
+  const statusX = pageWidth - PDF_MARGIN - statusTextWidth;
+  doc.setFillColor(...statusRgb);
+  doc.roundedRect(statusX, y - 14, statusTextWidth, 20, 4, 4, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.text(patientStatus.label, statusX + 8, y);
+  doc.setFont(undefined, "normal");
+};
+
+// Cabeçalho: título, status, período/sessões/dispositivo e data de geração
+const pdfAddHeader = (doc, report, pageWidth) => {
+  let y = PDF_MARGIN;
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(18);
+  doc.setTextColor(...PDF_COLORS.navy);
+  doc.text("Relatório Clínico — I Blue It", PDF_MARGIN, y);
+
+  pdfAddStatusBadge(doc, report, y, pageWidth);
+
+  y += 22;
+
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(...PDF_COLORS.gray);
+  doc.text(`${report.period.label} · ${report.sessionCount} sessão(ões) · ${report.device}`, PDF_MARGIN, y);
+  y += 16;
+  doc.setFontSize(9);
+  doc.text(
+    `Gerado em ${new Date(report.created_at).toLocaleString("pt-BR")} · ${describeGeneratedBy(report)}`,
+    PDF_MARGIN,
+    y
+  );
+  return y + 4;
+};
+
+const calculateAge = (birthday) => {
+  if (!birthday) return null;
+  const birth = new Date(birthday);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+};
+
+const formatOptionalMeasure = (value, unit) => (value ? `${value} ${unit}` : "—");
+
+const pdfAddLabel = (doc, label, y) => {
+  doc.setFontSize(10);
+  doc.setTextColor(...PDF_COLORS.navy);
+  doc.setFont(undefined, "bold");
+  doc.text(label, PDF_MARGIN, y);
+  doc.setFont(undefined, "normal");
+  doc.setTextColor(60, 60, 60);
+};
+
+// Dados do paciente e do profissional responsável
+const pdfAddPeopleInfo = (doc, { patientName, pacientProfile, professionalName, professionalRole }, y, pageWidth) => {
+  let cursor = y;
+  const age = calculateAge(pacientProfile?.birthday);
+
+  doc.setDrawColor(224, 224, 224);
+  doc.line(PDF_MARGIN, cursor, pageWidth - PDF_MARGIN, cursor);
+  cursor += 16;
+
+  pdfAddLabel(doc, "Paciente:", cursor);
+  const patientLine = [
+    patientName || "—",
+    age == null ? null : `${age} anos`,
+    pacientProfile?.sex || null,
+    pacientProfile?.condition || null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  doc.text(patientLine, PDF_MARGIN + 85, cursor);
+  cursor += 14;
+
+  if (pacientProfile?.weight || pacientProfile?.height) {
+    doc.setTextColor(...PDF_COLORS.gray);
+    doc.setFontSize(9);
+    doc.text(
+      `Peso/Altura: ${formatOptionalMeasure(pacientProfile.weight, "kg")} / ${formatOptionalMeasure(pacientProfile.height, "cm")}`,
+      PDF_MARGIN + 85,
+      cursor
+    );
+    cursor += 14;
+  }
+
+  pdfAddLabel(doc, "Profissional:", cursor);
+  doc.text([professionalName, professionalRole].filter(Boolean).join(" · ") || "—", PDF_MARGIN + 85, cursor);
+  return cursor + 20;
+};
+
+// Alerta ativo e possível inconsistência (verificação de coerência)
+const pdfAddWarnings = (doc, report, y, pageWidth, pageHeight) => {
+  let cursor = y;
+  if (report.alerts.length > 0) {
+    cursor = pdfAddNoteBox(
+      doc,
+      {
+        title: "Alerta ativo",
+        lines: report.alerts.map(describeAlert),
+        bg: PDF_COLORS.orangeBg,
+        border: PDF_COLORS.orange,
+        text: [191, 54, 12],
+      },
+      cursor,
+      pageWidth,
+      pageHeight
+    );
+  }
+
+  if (report.coerenciaVerificada === false) {
+    cursor = pdfAddNoteBox(
+      doc,
+      {
+        title: "Possível inconsistência no texto gerado",
+        lines: [
+          "O texto menciona uma tendência que não bate com o valor real da métrica. Revise com atenção.",
+          ...(report.avisosCoerencia || []).map(
+            (a) => `${a.metrica} — esperado: ${a.esperado} · trecho: "${a.trechoSuspeito}"`
+          ),
+        ],
+        bg: PDF_COLORS.redBg,
+        border: PDF_COLORS.red,
+        text: [142, 28, 28],
+      },
+      cursor,
+      pageWidth,
+      pageHeight
+    );
+  }
+  return cursor;
+};
+
+// Métricas principais — as 7 variáveis dos cards (feedback do piloto com o professor)
+const pdfAddMainMetrics = (doc, report, y, pageHeight) => {
+  const cursor = pdfEnsureSpace(doc, y, 20, pageHeight);
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(...PDF_COLORS.navy);
+  const metricasLinha = MAIN_METRIC_CARDS.map(
+    (card) => `${card.key}: ${formatMetricValue(card.key, report.currentMetrics[card.key])}`
+  ).join("    ");
+  doc.text(metricasLinha, PDF_MARGIN, cursor);
+  doc.setFont(undefined, "normal");
+  return cursor + 24;
+};
+
+const pdfAddTextSection = (doc, title, text, y, pageWidth, pageHeight) => {
+  const cursor = pdfAddSectionTitle(doc, title, y, pageHeight);
+  return pdfAddParagraph(doc, text, cursor, pageWidth, pageHeight) + 10;
+};
+
+// Evolução (avaliação inicial x estado atual)
+const pdfAddEvolution = (doc, report, y, pageWidth, pageHeight) => {
+  if (!report.evolucao) return y;
+  const cursor = pdfAddTextSection(doc, "Evolução", report.evolucao, y, pageWidth, pageHeight);
+  if (!report.initialMetrics) return cursor;
+
+  autoTable(doc, {
+    startY: cursor,
+    margin: { left: PDF_MARGIN, right: PDF_MARGIN },
+    head: [["Variável", "Avaliação inicial", "Estado atual"]],
+    body: MAIN_METRIC_CARDS.filter(
+      (card) => report.initialMetrics[card.key] != null || report.currentMetrics[card.key] != null
+    ).map((card) => [
+      card.label,
+      formatMetricValue(card.key, report.initialMetrics[card.key]),
+      formatMetricValue(card.key, report.currentMetrics[card.key]),
+    ]),
+    headStyles: { fillColor: PDF_COLORS.navy },
+    styles: { fontSize: 9 },
+  });
+  return doc.lastAutoTable.finalY + 16;
+};
+
+const PDF_FOOTNOTE_STYLE = { fontSize: 9, lineHeight: 12, color: PDF_COLORS.gray };
+
+// FA02 — campos opcionais não consultados
+const pdfAddMissingFields = (doc, report, y, pageWidth, pageHeight) => {
+  if (!report.missingOptionalFields?.length) return y;
+  let cursor = y;
+  for (const linha of describeMissingFields(report.missingOptionalFields)) {
+    cursor = pdfAddParagraph(doc, linha, cursor, pageWidth, pageHeight, PDF_FOOTNOTE_STYLE);
+  }
+  return cursor + 10;
+};
+
+const formatRawValue = (valor) => (typeof valor === "number" ? valor.toFixed(2) : valor);
+
+// Dados brutos consolidados
+const pdfAddRawData = (doc, report, y, pageHeight) => {
+  const cursor = pdfAddSectionTitle(doc, "Dados brutos consolidados", y, pageHeight);
+  autoTable(doc, {
+    startY: cursor,
+    margin: { left: PDF_MARGIN, right: PDF_MARGIN },
+    head: [["Métrica", "Sigla", "Valor", "Unidade", "Collection"]],
+    body: report.dadosBrutos.map((row) => [
+      row.metrica,
+      row.sigla,
+      formatRawValue(row.valor),
+      row.unidade,
+      row.sourceCollection,
+    ]),
+    headStyles: { fillColor: PDF_COLORS.navy },
+    styles: { fontSize: 9 },
+  });
+};
+
+const buildClinicalReportPdf = (report, peopleInfo) => {
+  const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  let y = pdfAddHeader(doc, report, pageWidth);
+  y = pdfAddPeopleInfo(doc, peopleInfo, y, pageWidth);
+  y = pdfAddWarnings(doc, report, y, pageWidth, pageHeight);
+  y = pdfAddMainMetrics(doc, report, y, pageHeight);
+  y = pdfAddTextSection(doc, "Objetivos do Tratamento", "• Treinamento Muscular Inspiratório (TMI)", y, pageWidth, pageHeight);
+  y = pdfAddTextSection(doc, "Resumo da sessão", report.resumoSessao, y, pageWidth, pageHeight);
+  y = pdfAddEvolution(doc, report, y, pageWidth, pageHeight);
+  y = pdfAddMissingFields(doc, report, y, pageWidth, pageHeight);
+
+  // Aviso de revisão
+  y = pdfAddParagraph(doc, report.avisoRevisao, y, pageWidth, pageHeight, PDF_FOOTNOTE_STYLE);
+  y += 16;
+
+  pdfAddRawData(doc, report, y, pageHeight);
+  return doc;
+};
+
+const alertsTabLabel = (report) => {
+  const count = report?.alerts.length;
+  return count ? `Alertas (${count})` : "Alertas";
+};
+
+const formatRespiratoryRate = (profile, device) => {
+  const capacities = profile?.["capacities" + DEVICE_CAPACITIES_SUFFIX[device]];
+  return capacities ? capacities.respiratoryRate + " rpm" : "—";
+};
+
+// Critérios de alerta não têm id próprio enquanto são editados na tela; um
+// identificador local (`uid`) mantém a key estável ao editar/remover itens e
+// é descartado antes de enviar à API.
+const DEFAULT_CRITERION = { metric: "DJ", condition: "Deterioração consecutiva", triggerValue: 5 };
+let criterionSequence = 0;
+const createCriterion = ({ metric, condition, triggerValue }) => {
+  criterionSequence += 1;
+  return { uid: `criterio-${criterionSequence}`, metric, condition, triggerValue };
+};
+const toCriterionPayload = ({ metric, condition, triggerValue }) => ({ metric, condition, triggerValue });
+
+const CriterionTriggerField = ({ criterion, onChange }) => {
+  if (criterion.condition === "Deterioração consecutiva") {
+    return (
+      <FormControl size="small" sx={{ minWidth: 160 }}>
+        <InputLabel>Disparar após</InputLabel>
+        <Select sx={{ color: "#11192A" }} value={criterion.triggerValue} label="Disparar após" onChange={(e) => onChange(e.target.value)}>
+          {[2, 3, 4, 5, 6].map((n) => (<MenuItem key={n} value={n}>{n} sessões</MenuItem>))}
+        </Select>
+      </FormControl>
+    );
+  }
+  if (criterion.condition === "Abaixo do valor") {
+    return (
+      <TextField
+        size="small"
+        type="number"
+        label="Valor limite"
+        sx={{ minWidth: 160, "& input": { color: "#11192A" } }}
+        value={criterion.triggerValue}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+    );
+  }
+  if (criterion.condition === "Anomalia (IA)") {
+    return (
+      <TextField
+        size="small"
+        type="number"
+        label="Sensibilidade (%)"
+        helperText="% esperado de sessões anômalas no histórico"
+        sx={{ minWidth: 220, "& input": { color: "#11192A" } }}
+        value={criterion.triggerValue}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+    );
+  }
+  return (
+    <TextField
+      size="small"
+      type="number"
+      label="Queda mínima (%)"
+      sx={{ minWidth: 160, "& input": { color: "#11192A" } }}
+      value={criterion.triggerValue}
+      onChange={(e) => onChange(Number(e.target.value))}
+    />
+  );
+};
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 const ClinicalReport = () => {
@@ -317,15 +634,13 @@ const ClinicalReport = () => {
   const [generateError, setGenerateError] = useState(null);
 
   // Aba "Alertas" (RF10)
-  const [criteria, setCriteria] = useState([
-    { metric: "DJ", condition: "Deterioração consecutiva", triggerValue: 5 },
-  ]);
+  const [criteria, setCriteria] = useState(() => [createCriterion(DEFAULT_CRITERION)]);
   const [savingCriteria, setSavingCriteria] = useState(false);
 
   // Aba "Pacientes" (RF09 — indicador de alerta por paciente)
   const [patients, setPatients] = useState([]);
 
-  const currentReport = reports.length ? reports[0] : null;
+  const currentReport = reports[0] ?? null;
 
   // ── Carrega dados do backend ───────────────────────────────────────────────
 
@@ -360,7 +675,7 @@ const ClinicalReport = () => {
     if (!context.patientId) return;
     const data = await fetchAlertCriteria(context.patientId);
     if (data.length) {
-      setCriteria(data.map((c) => ({ metric: c.metric, condition: c.condition, triggerValue: c.triggerValue })));
+      setCriteria(data.map(createCriterion));
     }
   };
 
@@ -368,7 +683,9 @@ const ClinicalReport = () => {
     try {
       const result = await fetchAllPatients(context);
       setPatients(result);
-    } catch (err) { }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleSelectPatient = (patient) => {
@@ -386,6 +703,7 @@ const ClinicalReport = () => {
       void loadPatients();
       context.addNotification("success", "Relatório arquivado.");
     } catch (err) {
+      console.error(err);
       context.addNotification("error", "Não foi possível arquivar o relatório. Tente novamente.");
     }
   };
@@ -403,6 +721,7 @@ const ClinicalReport = () => {
       setArchivedReports(archivedReports.filter((r) => r._id !== reportId));
       context.addNotification("success", "Relatório excluído definitivamente.");
     } catch (err) {
+      console.error(err);
       context.addNotification("error", "Não foi possível excluir o relatório. Tente novamente.");
     }
   };
@@ -412,243 +731,16 @@ const ClinicalReport = () => {
     if (!currentReport || exportingPdf) return;
     setExportingPdf(true);
     try {
-      const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      let y = PDF_MARGIN;
-
-      // Cabeçalho
-      doc.setFont(undefined, "bold");
-      doc.setFontSize(18);
-      doc.setTextColor(...PDF_COLORS.navy);
-      doc.text("Relatório Clínico — I Blue It", PDF_MARGIN, y);
-
-      // Status rápido do paciente (Estável/Atenção/Crítico), alinhado à direita
-      const patientStatus = getPatientStatus(currentReport);
-      if (patientStatus) {
-        const statusColorMap = {
-          "Crítico": [198, 40, 40],
-          "Atenção": [230, 81, 0],
-          "Estável": [46, 125, 50],
-        };
-        const statusRgb = statusColorMap[patientStatus.label] || [117, 117, 117];
-        doc.setFontSize(10);
-        doc.setFont(undefined, "bold");
-        const statusTextWidth = doc.getTextWidth(patientStatus.label) + 16;
-        const statusX = pageWidth - PDF_MARGIN - statusTextWidth;
-        doc.setFillColor(...statusRgb);
-        doc.roundedRect(statusX, y - 14, statusTextWidth, 20, 4, 4, "F");
-        doc.setTextColor(255, 255, 255);
-        doc.text(patientStatus.label, statusX + 8, y);
-        doc.setFont(undefined, "normal");
-      }
-
-      y += 22;
-
-      doc.setFont(undefined, "normal");
-      doc.setFontSize(11);
-      doc.setTextColor(...PDF_COLORS.gray);
-      doc.text(
-        `${currentReport.period.label} · ${currentReport.sessionCount} sessão(ões) · ${currentReport.device}`,
-        PDF_MARGIN,
-        y
-      );
-      y += 16;
-      doc.setFontSize(9);
-      doc.text(
-        `Gerado em ${new Date(currentReport.created_at).toLocaleString("pt-BR")} · ${
-          currentReport.generatedBy === "llm" ? "texto via LLM" : "texto via template"
-        }`,
-        PDF_MARGIN,
-        y
-      );
-      y += 4;
-
-      // Dados do paciente e do profissional responsável
-      const professionalName = getTokenParameters("fullname");
-      const professionalRole = getTokenParameters("role");
-      let age = null;
-      if (pacientProfile && pacientProfile.birthday) {
-        const birth = new Date(pacientProfile.birthday);
-        const today = new Date();
-        age = today.getFullYear() - birth.getFullYear();
-        const monthDiff = today.getMonth() - birth.getMonth();
-        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
-      }
-
-      doc.setDrawColor(224, 224, 224);
-      doc.line(PDF_MARGIN, y, pageWidth - PDF_MARGIN, y);
-      y += 16;
-
-      doc.setFontSize(10);
-      doc.setTextColor(...PDF_COLORS.navy);
-      doc.setFont(undefined, "bold");
-      doc.text("Paciente:", PDF_MARGIN, y);
-      doc.setFont(undefined, "normal");
-      doc.setTextColor(60, 60, 60);
-      const patientLine = [
-        context.patientName || "—",
-        age != null ? `${age} anos` : null,
-        pacientProfile?.sex || null,
-        pacientProfile?.condition || null,
-      ]
-        .filter(Boolean)
-        .join(" · ");
-      doc.text(patientLine, PDF_MARGIN + 85, y);
-      y += 14;
-
-      if (pacientProfile?.weight || pacientProfile?.height) {
-        doc.setTextColor(...PDF_COLORS.gray);
-        doc.setFontSize(9);
-        doc.text(
-          `Peso/Altura: ${pacientProfile?.weight ? pacientProfile.weight + " kg" : "—"} / ${
-            pacientProfile?.height ? pacientProfile.height + " cm" : "—"
-          }`,
-          PDF_MARGIN + 85,
-          y
-        );
-        y += 14;
-      }
-
-      doc.setFontSize(10);
-      doc.setTextColor(...PDF_COLORS.navy);
-      doc.setFont(undefined, "bold");
-      doc.text("Profissional:", PDF_MARGIN, y);
-      doc.setFont(undefined, "normal");
-      doc.setTextColor(60, 60, 60);
-      doc.text(
-        [professionalName, professionalRole].filter(Boolean).join(" · ") || "—",
-        PDF_MARGIN + 85,
-        y
-      );
-      y += 20;
-
-      // Alerta ativo
-      if (currentReport.alerts.length > 0) {
-        y = pdfAddNoteBox(
-          doc,
-          {
-            title: "Alerta ativo",
-            lines: currentReport.alerts.map(describeAlert),
-            bg: PDF_COLORS.orangeBg,
-            border: PDF_COLORS.orange,
-            text: [191, 54, 12],
-          },
-          y,
-          pageWidth,
-          pageHeight
-        );
-      }
-
-      // Possível inconsistência (verificação de coerência)
-      if (currentReport.coerenciaVerificada === false) {
-        y = pdfAddNoteBox(
-          doc,
-          {
-            title: "Possível inconsistência no texto gerado",
-            lines: [
-              "O texto menciona uma tendência que não bate com o valor real da métrica. Revise com atenção.",
-              ...(currentReport.avisosCoerencia || []).map(
-                (a) => `${a.metrica} — esperado: ${a.esperado} · trecho: "${a.trechoSuspeito}"`
-              ),
-            ],
-            bg: PDF_COLORS.redBg,
-            border: PDF_COLORS.red,
-            text: [142, 28, 28],
-          },
-          y,
-          pageWidth,
-          pageHeight
-        );
-      }
-
-      // Métricas principais — as 7 variáveis dos cards (feedback do piloto com o professor)
-      y = pdfEnsureSpace(doc, y, 20, pageHeight);
-      doc.setFont(undefined, "bold");
-      doc.setFontSize(11);
-      doc.setTextColor(...PDF_COLORS.navy);
-      const metricasLinha = MAIN_METRIC_CARDS.map(
-        (card) => `${card.key}: ${formatMetricValue(card.key, currentReport.currentMetrics[card.key])}`
-      ).join("    ");
-      doc.text(metricasLinha, PDF_MARGIN, y);
-      doc.setFont(undefined, "normal");
-      y += 24;
-
-      // Objetivos do Tratamento
-      y = pdfAddSectionTitle(doc, "Objetivos do Tratamento", y, pageHeight);
-      y = pdfAddParagraph(doc, "• Treinamento Muscular Inspiratório (TMI)", y, pageWidth, pageHeight);
-      y += 10;
-
-      // Resumo da sessão
-      y = pdfAddSectionTitle(doc, "Resumo da sessão", y, pageHeight);
-      y = pdfAddParagraph(doc, currentReport.resumoSessao, y, pageWidth, pageHeight);
-      y += 10;
-
-      // Evolução (avaliação inicial x estado atual)
-      if (currentReport.evolucao) {
-        y = pdfAddSectionTitle(doc, "Evolução", y, pageHeight);
-        y = pdfAddParagraph(doc, currentReport.evolucao, y, pageWidth, pageHeight);
-        y += 10;
-
-        if (currentReport.initialMetrics) {
-          autoTable(doc, {
-            startY: y,
-            margin: { left: PDF_MARGIN, right: PDF_MARGIN },
-            head: [["Variável", "Avaliação inicial", "Estado atual"]],
-            body: MAIN_METRIC_CARDS.filter(
-              (card) => currentReport.initialMetrics[card.key] != null || currentReport.currentMetrics[card.key] != null
-            ).map((card) => [
-              card.label,
-              formatMetricValue(card.key, currentReport.initialMetrics[card.key]),
-              formatMetricValue(card.key, currentReport.currentMetrics[card.key]),
-            ]),
-            headStyles: { fillColor: PDF_COLORS.navy },
-            styles: { fontSize: 9 },
-          });
-          y = doc.lastAutoTable.finalY + 16;
-        }
-      }
-
-      // FA02 — campos opcionais não consultados
-      if (currentReport.missingOptionalFields && currentReport.missingOptionalFields.length > 0) {
-        for (const linha of describeMissingFields(currentReport.missingOptionalFields)) {
-          y = pdfAddParagraph(doc, linha, y, pageWidth, pageHeight, {
-            fontSize: 9,
-            lineHeight: 12,
-            color: PDF_COLORS.gray,
-          });
-        }
-        y += 10;
-      }
-
-      // Aviso de revisão
-      y = pdfAddParagraph(doc, currentReport.avisoRevisao, y, pageWidth, pageHeight, {
-        fontSize: 9,
-        lineHeight: 12,
-        color: PDF_COLORS.gray,
+      const doc = buildClinicalReportPdf(currentReport, {
+        patientName: context.patientName,
+        pacientProfile,
+        professionalName: getTokenParameters("fullname"),
+        professionalRole: getTokenParameters("role"),
       });
-      y += 16;
-
-      // Dados brutos consolidados
-      y = pdfAddSectionTitle(doc, "Dados brutos consolidados", y, pageHeight);
-      autoTable(doc, {
-        startY: y,
-        margin: { left: PDF_MARGIN, right: PDF_MARGIN },
-        head: [["Métrica", "Sigla", "Valor", "Unidade", "Collection"]],
-        body: currentReport.dadosBrutos.map((row) => [
-          row.metrica,
-          row.sigla,
-          typeof row.valor === "number" ? row.valor.toFixed(2) : row.valor,
-          row.unidade,
-          row.sourceCollection,
-        ]),
-        headStyles: { fillColor: PDF_COLORS.navy },
-        styles: { fontSize: 9 },
-      });
-
-      const sessionLabel = (currentReport?.period?.label || "relatorio").replace(/[^\w-]+/g, "_");
+      const sessionLabel = (currentReport.period?.label || "relatorio").replace(/[^\w-]+/g, "_");
       doc.save(`relatorio-clinico-${sessionLabel}.pdf`);
     } catch (err) {
+      console.error(err);
       context.addNotification("error", "Não foi possível exportar o PDF. Tente novamente.");
     } finally {
       setExportingPdf(false);
@@ -710,8 +802,7 @@ const ClinicalReport = () => {
     } catch (err) {
       // FA03 — falha na API de IA. Mantém período/dispositivo selecionados para nova tentativa.
       const message =
-        (err.response && err.response.data && err.response.data.message) ||
-        "Não foi possível gerar o relatório agora. Tente novamente.";
+        err.response?.data?.message || "Não foi possível gerar o relatório agora. Tente novamente.";
       setGenerateError(message);
     } finally {
       setGenerating(false);
@@ -725,9 +816,10 @@ const ClinicalReport = () => {
   const handleSaveCriteria = async () => {
     setSavingCriteria(true);
     try {
-      await saveAlertCriteria(context.patientId, criteria);
+      await saveAlertCriteria(context.patientId, criteria.map(toCriterionPayload));
       context.addNotification("success", "Configuração de alertas salva com sucesso.");
     } catch (err) {
+      console.error(err);
       context.addNotification("error", "Não foi possível salvar a configuração de alertas.");
     } finally {
       setSavingCriteria(false);
@@ -755,7 +847,7 @@ const ClinicalReport = () => {
   const ONE_DAY_MS = 24 * 60 * 60 * 1000;
   const alertDates = new Set();
   reports.forEach((r) => {
-    if (!r.alerts || !r.alerts.length || !r.period) return;
+    if (!r.alerts?.length || !r.period) return;
     const startTime = new Date(r.period.start).getTime();
     const endTime = new Date(r.period.end).getTime();
     for (let t = startTime; t <= endTime; t += ONE_DAY_MS) {
@@ -842,7 +934,7 @@ const ClinicalReport = () => {
               <Tab
                 icon={<NotificationsIcon sx={{ fontSize: 16 }} />}
                 iconPosition="start"
-                label={"Alertas" + (currentReport && currentReport.alerts.length ? ` (${currentReport.alerts.length})` : "")}
+                label={alertsTabLabel(currentReport)}
               />
               <Tab icon={<PlayCircleIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Gerar relatório" />
               <Tab icon={<PersonIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Pacientes" />
@@ -881,7 +973,7 @@ const ClinicalReport = () => {
               </Box>
               <Typography sx={{ fontSize: 12, color: "#9e9e9e", mb: 2 }}>
                 Gerado em {new Date(currentReport.created_at).toLocaleString("pt-BR")} ·{" "}
-                {currentReport.generatedBy === "llm" ? "texto via LLM" : "texto via template"}
+                {describeGeneratedBy(currentReport)}
               </Typography>
 
               {currentReport.alerts.length > 0 && (
@@ -889,8 +981,8 @@ const ClinicalReport = () => {
                   <WarningAmberIcon sx={{ color: "#e65100", mr: 1.5, mt: 0.2, flexShrink: 0 }} />
                   <Box>
                     <Typography sx={{ color: "#e65100", fontWeight: "bold", fontSize: 14 }}>Alerta ativo</Typography>
-                    {currentReport.alerts.map((a, i) => (
-                      <Typography key={i} sx={{ color: "#bf360c", fontSize: 13, mt: 0.3 }}>
+                    {currentReport.alerts.map((a) => (
+                      <Typography key={`${a.metric}-${a.condition}-${a.triggerValue}`} sx={{ color: "#bf360c", fontSize: 13, mt: 0.3 }}>
                         {describeAlert(a)}
                       </Typography>
                     ))}
@@ -908,8 +1000,8 @@ const ClinicalReport = () => {
                     <Typography sx={{ color: "#8e1c1c", fontSize: 12, mt: 0.3, mb: 0.5 }}>
                       O texto abaixo menciona uma tendência que não bate com o valor real da métrica. Revise com atenção antes de usar este relatório.
                     </Typography>
-                    {(currentReport.avisosCoerencia || []).map((a, i) => (
-                      <Typography key={i} sx={{ color: "#bf360c", fontSize: 13, mt: 0.3 }}>
+                    {(currentReport.avisosCoerencia || []).map((a) => (
+                      <Typography key={`${a.metrica}-${a.trechoSuspeito}`} sx={{ color: "#bf360c", fontSize: 13, mt: 0.3 }}>
                         {a.metrica} — esperado: {a.esperado} · trecho: "{a.trechoSuspeito}"
                       </Typography>
                     ))}
@@ -1026,12 +1118,12 @@ const ClinicalReport = () => {
               </Paper>
 
               {/* FA02 — campos opcionais que não puderam ser consultados no período */}
-              {currentReport.missingOptionalFields && currentReport.missingOptionalFields.length > 0 && (
+              {currentReport.missingOptionalFields?.length > 0 && (
                 <Paper sx={{ backgroundColor: "#f5f5f5", borderRadius: 2, p: 2, mb: 2.5, display: "flex", alignItems: "flex-start", boxShadow: 1 }}>
                   <DescriptionIcon sx={{ color: "#9e9e9e", mr: 1.5, mt: 0.2, fontSize: 18, flexShrink: 0 }} />
                   <Box>
-                    {describeMissingFields(currentReport.missingOptionalFields).map((linha, i) => (
-                      <Typography key={i} sx={{ color: "#757575", fontSize: 12 }}>
+                    {describeMissingFields(currentReport.missingOptionalFields).map((linha) => (
+                      <Typography key={linha} sx={{ color: "#757575", fontSize: 12 }}>
                         {linha}
                       </Typography>
                     ))}
@@ -1055,12 +1147,12 @@ const ClinicalReport = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {currentReport.dadosBrutos.map((row, i) => (
-                        <TableRow key={i} sx={{ "&:nth-of-type(even)": { backgroundColor: "#f9f9f9" } }}>
+                      {currentReport.dadosBrutos.map((row) => (
+                        <TableRow key={row.sigla} sx={{ "&:nth-of-type(even)": { backgroundColor: "#f9f9f9" } }}>
                           <TableCell sx={{ fontSize: 13, color: "#11192A" }}>{row.metrica}</TableCell>
                           <TableCell sx={{ fontSize: 13, color: "#11192A" }}>{row.sigla}</TableCell>
                           <TableCell sx={{ fontSize: 13, color: "#11192A" }}>
-                            {typeof row.valor === "number" ? row.valor.toFixed(2) : row.valor}
+                            {formatRawValue(row.valor)}
                           </TableCell>
                           <TableCell sx={{ fontSize: 13, color: "#9e9e9e" }}>{row.unidade}</TableCell>
                           <TableCell sx={{ fontSize: 13, color: "#11192A" }}>
@@ -1119,7 +1211,7 @@ const ClinicalReport = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {reports.map((r, i) => (
+                      {reports.map((r) => (
                         <TableRow key={r._id} hover>
                           <TableCell sx={{ fontSize: 13, color: "#11192A" }}>{r.period.label}</TableCell>
                           <TableCell sx={{ fontSize: 13, maxWidth: 420, color: "#11192A" }}>
@@ -1284,9 +1376,7 @@ const ClinicalReport = () => {
                   Frequência Respiratória (FR) · perfil do paciente
                 </Typography>
                 <Typography sx={{ fontSize: 22, fontWeight: "bold", color: "#e65100" }}>
-                  {pacientProfile && pacientProfile["capacities" + DEVICE_CAPACITIES_SUFFIX[device]]
-                    ? pacientProfile["capacities" + DEVICE_CAPACITIES_SUFFIX[device]].respiratoryRate + " rpm"
-                    : "—"}
+                  {formatRespiratoryRate(pacientProfile, device)}
                 </Typography>
                 <Typography sx={{ fontSize: 12, color: "#9e9e9e", mt: 0.5 }}>
                   Valor de referência do perfil de calibração do paciente — o modelo de dados
@@ -1308,7 +1398,7 @@ const ClinicalReport = () => {
               </Typography>
 
               {criteria.map((c, idx) => (
-                <Paper key={idx} sx={{ backgroundColor: "white", borderRadius: 2, p: 3, mb: 2, boxShadow: 2 }}>
+                <Paper key={c.uid} sx={{ backgroundColor: "white", borderRadius: 2, p: 3, mb: 2, boxShadow: 2 }}>
                   <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
                     <Typography sx={{ fontWeight: "bold", color: "#11192A", fontSize: 14 }}>Critério {idx + 1}</Typography>
                     <IconButton size="small" aria-label={`Remover critério ${idx + 1}`} onClick={() => setCriteria(criteria.filter((_, i) => i !== idx))} sx={{ color: "#c62828" }}>
@@ -1328,42 +1418,10 @@ const ClinicalReport = () => {
                         {CONDITION_OPTIONS.map((cond) => (<MenuItem key={cond} value={cond}>{cond}</MenuItem>))}
                       </Select>
                     </FormControl>
-                    {c.condition === "Deterioração consecutiva" ? (
-                      <FormControl size="small" sx={{ minWidth: 160 }}>
-                        <InputLabel>Disparar após</InputLabel>
-                        <Select sx={{ color: "#11192A" }} value={c.triggerValue} label="Disparar após" onChange={(e) => updateCriteria(idx, "triggerValue", e.target.value)}>
-                          {[2, 3, 4, 5, 6].map((n) => (<MenuItem key={n} value={n}>{n} sessões</MenuItem>))}
-                        </Select>
-                      </FormControl>
-                    ) : c.condition === "Abaixo do valor" ? (
-                      <TextField
-                        size="small"
-                        type="number"
-                        label="Valor limite"
-                        sx={{ minWidth: 160, "& input": { color: "#11192A" } }}
-                        value={c.triggerValue}
-                        onChange={(e) => updateCriteria(idx, "triggerValue", Number(e.target.value))}
-                      />
-                    ) : c.condition === "Anomalia (IA)" ? (
-                      <TextField
-                        size="small"
-                        type="number"
-                        label="Sensibilidade (%)"
-                        helperText="% esperado de sessões anômalas no histórico"
-                        sx={{ minWidth: 220, "& input": { color: "#11192A" } }}
-                        value={c.triggerValue}
-                        onChange={(e) => updateCriteria(idx, "triggerValue", Number(e.target.value))}
-                      />
-                    ) : (
-                      <TextField
-                        size="small"
-                        type="number"
-                        label="Queda mínima (%)"
-                        sx={{ minWidth: 160, "& input": { color: "#11192A" } }}
-                        value={c.triggerValue}
-                        onChange={(e) => updateCriteria(idx, "triggerValue", Number(e.target.value))}
-                      />
-                    )}
+                    <CriterionTriggerField
+                      criterion={c}
+                      onChange={(value) => updateCriteria(idx, "triggerValue", value)}
+                    />
                   </Box>
                 </Paper>
               ))}
@@ -1371,7 +1429,7 @@ const ClinicalReport = () => {
               <Box sx={{ display: "flex", gap: 2, mt: 1 }}>
                 <Button
                   startIcon={<AddIcon />}
-                  onClick={() => setCriteria([...criteria, { metric: "DJ", condition: "Deterioração consecutiva", triggerValue: 5 }])}
+                  onClick={() => setCriteria([...criteria, createCriterion(DEFAULT_CRITERION)])}
                   sx={{ color: "#1e2b48", textTransform: "none", border: "1px dashed #1e2b48", borderRadius: 2 }}
                 >
                   Adicionar critério

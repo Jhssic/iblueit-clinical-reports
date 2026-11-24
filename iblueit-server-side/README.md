@@ -40,7 +40,7 @@ npm install
   "Values": {
     "AzureWebJobsStorage": "",
     "FUNCTIONS_WORKER_RUNTIME": "node",
-    "MongoDbAtlas":"mongodb://usuarioiblueit:senhaiblueit@iblueit-mongo/?retryWrites=true&w=majority Alterar Usuario e senha",
+    "MongoDbAtlas":"mongodb://<USUARIO>:<SENHA>@iblueit-mongo/?retryWrites=true&w=majority Alterar Usuario e senha",
     "URL_API_IA": "http://127.0.0.1:5000"
   },
   "Host": {

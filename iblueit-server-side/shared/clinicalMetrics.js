@@ -70,7 +70,7 @@ async function extractMetricsForPeriod({ pacientId, device, start, end }, mongoo
     // flowdatadevices já vinculados a cada sessão da plataforma.
     let flowValues = [];
     plataformSessions.forEach((s) => {
-        if (s.flowDataDevicesId && s.flowDataDevicesId.flowDataDevices) {
+        if (s.flowDataDevicesId?.flowDataDevices) {
             s.flowDataDevicesId.flowDataDevices.forEach((d) => {
                 d.flowData.forEach((f) => flowValues.push(f.flowValue));
             });

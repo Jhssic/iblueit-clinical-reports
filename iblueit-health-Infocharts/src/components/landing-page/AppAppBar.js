@@ -93,12 +93,25 @@ function AppAppBar({ mode, toggleColorMode }) {
                 px: 0,
               }}
             >
-              <img
-                src={logoblue}
-                style={logoStyle}
+              <Box
+                component="button"
+                type="button"
                 onClick={handleLogoClick}
-                alt="logo of I Blue It"
-              />
+                sx={{
+                  display: 'flex',
+                  p: 0,
+                  m: 0,
+                  border: 0,
+                  background: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <img
+                  src={logoblue}
+                  style={logoStyle}
+                  alt="logo of I Blue It"
+                />
+              </Box>
               <Box sx={{ display: { xs: 'none', md: 'flex' } }}>
                 <MenuItem
                   onClick={() => scrollToSection('features')}

@@ -40,6 +40,7 @@ const ShippingCode = () => {
 			await navigator.clipboard.writeText(gameToken);
 			context.addNotification('success',  'Código copiado');
 		} catch (error) {
+			console.error(error);
 			context.addNotification('error', 'Não foi possível copiar o código.');
 		}
 	}
@@ -48,7 +49,9 @@ const ShippingCode = () => {
 		try {
 			await requestGenerateShippingCode(context);
 			setGameToken(getTokenParameters('gameToken'));
-		} catch (error) { }
+		} catch (error) {
+			console.error(error);
+		}
 	}
 
 	return (

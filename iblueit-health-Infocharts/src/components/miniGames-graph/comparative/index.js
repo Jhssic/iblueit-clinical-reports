@@ -4,35 +4,38 @@ import { ComposedChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveCo
 import { Box } from "@mui/material";
 import './style.css'
 
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload?.length) {
+    const values = [];
+    let messageFlowValue = '';
+    let messageExpectedValues = '';
+    for (const element of payload) {
+      if (element.name === 'expectedValues_B') {
+        values.push(element.value);
+      } else if (element.dataKey === "expectedValues_A") {
+        messageExpectedValues = element.name;
+        values.push(element.value);
+      } else {
+        messageFlowValue = `${element.name}: ${element.value}L/min`;
+      }
+    }
+    if (values.length) messageExpectedValues = `${messageExpectedValues}: ${values[0]}L/min - ${values[0] + values[1]}L/min`
+    return (
+      <div className="custom-tooltip" style={{ backgroundColor: '#F9FAFC', border: 'solid 1px #E9EAED' }}>
+        <p className="label" style={{ margin: '0 5px' }}>{label}</p>
+        <p className="intro" style={{ margin: '0 8px' }}>{messageFlowValue}</p>
+        <p className="intro" style={{ margin: '0 8px' }}>{messageExpectedValues}</p>
+      </div >
+    );
+  }
+  return null;
+};
+
 const MiniGamesGraphComparative = ({ tableLegend_Y, tableLegend_X, data }) => {
   const [expectedValuesHide, setExpectedValuesHide] = useState(false);
 
-
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      const values = [];
-      let messageFlowValue = '';
-      let messageExpectedValues = '';
-      for (const element of payload) {
-        if (element.name === 'expectedValues_B') {
-          values.push(element.value);
-        } else if (element.dataKey === "expectedValues_A") {
-          messageExpectedValues = element.name;
-          values.push(element.value);
-        } else {
-          messageFlowValue = `${element.name}: ${element.value}L/min`;
-        }
-      }
-      if (values.length) messageExpectedValues = `${messageExpectedValues}: ${values[0]}L/min - ${values[0] + values[1]}L/min`
-      return (
-        <div className="custom-tooltip" style={{ backgroundColor: '#F9FAFC', border: 'solid 1px #E9EAED' }}>
-          <p className="label" style={{ margin: '0 5px' }}>{label}</p>
-          <p className="intro" style={{ margin: '0 8px' }}>{messageFlowValue}</p>
-          <p className="intro" style={{ margin: '0 8px' }}>{messageExpectedValues}</p>
-        </div >
-      );
-    }
-    return null;
+  const handleLegendClick = (key) => {
+    if (key === 'expectedValues_A') setExpectedValuesHide(!expectedValuesHide);
   };
 
   const renderLegend = (props) => (
@@ -40,12 +43,17 @@ const MiniGamesGraphComparative = ({ tableLegend_Y, tableLegend_X, data }) => {
       {props.payload.map((entry, index) => (
         (entry.value !== 'expectedValues_B') && (
           <li
-            onClick={() => (entry.dataKey === 'expectedValues_A') ? setExpectedValuesHide(!expectedValuesHide) : {}}
             className={`recharts-legend-item legend-item-${index} ${(entry.dataKey === 'expectedValues_A' && expectedValuesHide) ? 'inactive' : ''} ${(!expectedValuesHide && entry.dataKey === 'expectedValues_A') ? 'legend' : ''}`}
             style={{ display: 'flex', marginRight: '10px' }}
-            key={`item-${index}`}>
-            {getLinearScaleIcon(entry.dataKey)}
-            {entry.value}
+            key={`item-${entry.dataKey}`}>
+            <button
+              type="button"
+              className="legend-button"
+              onClick={() => handleLegendClick(entry.dataKey)}
+            >
+              {getLinearScaleIcon(entry.dataKey)}
+              {entry.value}
+            </button>
           </li>
         )
       ))}

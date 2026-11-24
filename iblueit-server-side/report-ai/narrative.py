@@ -21,6 +21,9 @@ AVISO_REVISAO = (
     "pelo profissional responsável antes de ser incorporado ao prontuário clínico."
 )
 
+TENDENCIA_MELHORA = "melhora"
+TENDENCIA_REDUCAO = "redução"
+
 METRIC_LABELS = {
     "DJ": ("Desempenho do Jogador", "índice 0–1"),
     "PJ": ("Pontos da Jogada", "pontos"),
@@ -75,9 +78,9 @@ def _trend_word(diff):
     if diff is None:
         return None
     if diff > 0:
-        return "melhora"
+        return TENDENCIA_MELHORA
     if diff < 0:
-        return "redução"
+        return TENDENCIA_REDUCAO
     return "estabilidade"
 
 
@@ -227,29 +230,33 @@ def _check_coherence(resumo, analise, objective_trends, current_metrics=None):
     sentencas = [s.strip() for s in re.split(r"(?<=[.!?])\s+", texto) if s.strip()]
 
     for key, tendencia in objective_trends.items():
-        if tendencia not in ("melhora", "redução"):
-            continue
-        label, _ = METRIC_LABELS[key]
-        padrao_mencao = re.compile(rf"\b{re.escape(key)}\b|{re.escape(label)}", re.IGNORECASE)
-
-        for sentenca in sentencas:
-            if not padrao_mencao.search(sentenca):
-                continue
-            sentenca_lower = sentenca.lower()
-            tem_melhora = any(kw in sentenca_lower for kw in _MELHORA_KEYWORDS)
-            tem_reducao = any(kw in sentenca_lower for kw in _REDUCAO_KEYWORDS)
-
-            contradiz = (tendencia == "melhora" and tem_reducao and not tem_melhora) or (
-                tendencia == "redução" and tem_melhora and not tem_reducao
-            )
-            if contradiz:
-                avisos.append({
-                    "metrica": key,
-                    "esperado": tendencia,
-                    "trechoSuspeito": sentenca,
-                })
+        if tendencia in (TENDENCIA_MELHORA, TENDENCIA_REDUCAO):
+            avisos.extend(_find_trend_contradictions(key, tendencia, sentencas))
 
     return avisos
+
+
+def _sentence_contradicts_trend(sentenca, tendencia):
+    """Indica se a sentença descreve o sentido oposto à tendência real, sem
+    também mencionar o sentido correto (texto ambíguo não gera aviso)."""
+    sentenca_lower = sentenca.lower()
+    tem_melhora = any(kw in sentenca_lower for kw in _MELHORA_KEYWORDS)
+    tem_reducao = any(kw in sentenca_lower for kw in _REDUCAO_KEYWORDS)
+    if tendencia == TENDENCIA_MELHORA:
+        return tem_reducao and not tem_melhora
+    return tem_melhora and not tem_reducao
+
+
+def _find_trend_contradictions(key, tendencia, sentencas):
+    """Avisos para as sentenças que mencionam a métrica (pela sigla ou pelo
+    nome por extenso) e contradizem a tendência esperada."""
+    label, _ = METRIC_LABELS[key]
+    padrao_mencao = re.compile(rf"\b{re.escape(key)}\b|{re.escape(label)}", re.IGNORECASE)
+    return [
+        {"metrica": key, "esperado": tendencia, "trechoSuspeito": sentenca}
+        for sentenca in sentencas
+        if padrao_mencao.search(sentenca) and _sentence_contradicts_trend(sentenca, tendencia)
+    ]
 
 
 def _build_dados_brutos(current_metrics, metric_sources):

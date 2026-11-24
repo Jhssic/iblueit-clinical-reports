@@ -1,4 +1,4 @@
-module.exports = async function (context, req) {
+module.exports = async function getPacientMinigameOverview(context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
     mongoose.connect(DATABASE);
@@ -10,7 +10,7 @@ module.exports = async function (context, req) {
 
     const utils = require('../shared/utils');
 
-    var isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
+    const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
 
     if (!isVerifiedGameToken) {
         context.res = {
@@ -54,15 +54,17 @@ module.exports = async function (context, req) {
         findObj.minigameName = req.query.minigameName;
     if (req.query.devices)
         findObj.devices = req.query.devices.split(',');
-     if (req.query.dataIni)
+    if (req.query.dataIni) {
         findObj.created_at = {
             $gte: new Date(req.query.dataIni).toISOString("yyyy-MM-ddThh:mm:ss.msZ")
         };
-    if (req.query.dataIni && req.query.dataFim)
+    }
+    if (req.query.dataIni && req.query.dataFim) {
         findObj.created_at = {
             $gte: new Date(`${req.query.dataIni} 00:00:00:000 UTC`).toISOString("yyyy-MM-ddThh:mm:ss.msZ"),
             $lte: new Date(`${req.query.dataFim} 23:59:59:999 UTC`).toISOString("yyyy-MM-ddThh:mm:ss.msZ")
         };
+    }
     if (req.query.limit)
         findOptionsObj.limit = Number.parseInt(req.query.limit, 10);
     if (req.query.skip)

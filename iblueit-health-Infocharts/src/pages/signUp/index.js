@@ -66,7 +66,9 @@ export default function SignUp() {
         };
         await requestRegisterUsers(context, userData);
         navigate(pathRoutes.LOGIN)
-      } catch (error) { }
+      } catch (error) {
+        console.error(error);
+      }
     }
   };
 

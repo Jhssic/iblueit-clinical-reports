@@ -42,7 +42,10 @@ const AccountMenu = () => {
         navigate(pathRoutes.LOGIN)
         context.resetState();
       }
-    } catch (error) { }
+    } catch (error) {
+      // Falha ao limpar a sessão: mantém o usuário na tela atual, sem interromper a UI.
+      console.error(error);
+    }
   };
 
   const stringToColor = (string) => {
@@ -50,7 +53,7 @@ const AccountMenu = () => {
     let hash = 0;
     let i;
     for (i = 0; i < string.length; i += 1) {
-      hash = string.charCodeAt(i) + ((hash << 5) - hash);
+      hash = string.codePointAt(i) + ((hash << 5) - hash);
     }
     for (i = 0; i < 3; i += 1) {
       const value = (hash >> (i * 8)) & 0xff;

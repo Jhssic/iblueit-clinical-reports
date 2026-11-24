@@ -2,8 +2,7 @@ const verifyGameToken = async (token, mongoose) => {
     require('../shared/UserAccount');
     const UserAccountModel = mongoose.model('UserAccount');
     const user = await UserAccountModel.findOne({ "gameToken.token": token });
-    if (!user) return false;
-    return true;
+    return !!user;
 }
 
 // RN01 — verifica gameToken e exige role Administrator/Therapist. Usado nas
@@ -34,7 +33,7 @@ const requireClinicalStaff = async (context, req, mongoose, unauthorizedMessage)
 
 const validateHeaders = async (headers, context) => {
 
-    var result = {};
+    let result = {};
 
     if (headers.gametoken === undefined || headers.gametoken == null)
         result = { message: "Valor inválido!", header: "GameToken" }
@@ -45,7 +44,6 @@ const validateHeaders = async (headers, context) => {
             body: result
         }
         context.done();
-        return;
     }
 }
 
@@ -69,8 +67,8 @@ const createResponse = function (success, authorized, message, data, errorCode) 
 
 function createErrorObj(errorCode) {
     if (errorCode == null) return null;
-    var errorMessage = errorCodes[errorCode];
-    var errorObj = [{
+    const errorMessage = errorCodes[errorCode];
+    const errorObj = [{
         code: errorCode,
         message: errorMessage
     }];
@@ -85,8 +83,8 @@ const errorCodes = {
 }
 
 const sendWelcomeEmail = function (fullname, username, password, userEmail) {
-    var nodemailer = require('nodemailer');
-    var transporter = nodemailer.createTransport({
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
         host: process.env.SMTP_Server_Hostname,
         port: 587,
         secure: false,
@@ -96,7 +94,7 @@ const sendWelcomeEmail = function (fullname, username, password, userEmail) {
             pass: process.env.SMTP_Server_Password
         }
     });
-    var mailOptions = {
+    const mailOptions = {
         from: process.env.SMTP_FromEmail,
         to: userEmail,
         subject: 'Bem-vindo(a) ao I BLUE IT Service!',

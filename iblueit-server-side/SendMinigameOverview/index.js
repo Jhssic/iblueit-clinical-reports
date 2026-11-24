@@ -1,4 +1,4 @@
-module.exports = async function (context, req) {
+module.exports = async function sendMinigameOverview(context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
     mongoose.connect(DATABASE);
@@ -17,7 +17,7 @@ module.exports = async function (context, req) {
 
     await utils.validateHeaders(req.headers, context);
 
-    var isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
+    const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
 
     if (!isVerifiedGameToken) {
         context.res = {
@@ -61,23 +61,19 @@ module.exports = async function (context, req) {
 
     minigameOverviewReq._gameToken = req.headers.gametoken;
 
-    var flowDataDevicesIds = [];
+    const flowDataDevicesObjects = minigameOverviewReq.flowDataRounds.map(x => x.flowDataDevices);
 
-    var flowDataDevicesObjects = minigameOverviewReq.flowDataRounds.map(x => x.flowDataDevices);
-
-    var devices = flowDataDevicesObjects[0].map(x=>x.deviceName);
+    const devices = flowDataDevicesObjects[0].map(x=>x.deviceName);
 
     minigameOverviewReq.flowDataRounds.map(x => delete x.flowDataDevices);
 
     try {
-        const saveFlowDataDevices = async () => {
-            for (const flowDataDevices of flowDataDevicesObjects) {
-                var savedFlowDataDevices = await (new FlowDataDeviceModel({ _gameToken: req.headers.gametoken, flowDataDevices: flowDataDevices })).save();
-                flowDataDevicesIds.push(savedFlowDataDevices._id);
-            }
-        }
-
-        await saveFlowDataDevices();
+        // Cada FlowDataDevice é um documento independente; Promise.all mantém a
+        // ordem dos resultados, então flowDataDevicesIds[i] continua sendo o da rodada i.
+        const savedFlowDataDevices = await Promise.all(flowDataDevicesObjects.map(flowDataDevices =>
+            (new FlowDataDeviceModel({ _gameToken: req.headers.gametoken, flowDataDevices: flowDataDevices })).save()
+        ));
+        const flowDataDevicesIds = savedFlowDataDevices.map(saved => saved._id);
 
         minigameOverviewReq.flowDataRounds[0].flowDataDevicesId = flowDataDevicesIds[0];
         minigameOverviewReq.flowDataRounds[1].flowDataDevicesId = flowDataDevicesIds[1];
@@ -110,6 +106,7 @@ module.exports = async function (context, req) {
                 null)
         }
     } catch (err) {
+        context.log("[DB SAVING] - ERROR: ", err);
         context.res = {
             status: 500,
             body:  utils.createResponse(false,
