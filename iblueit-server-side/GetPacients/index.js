@@ -34,7 +34,7 @@ module.exports = async function (context, req) {
     if (req.query.condition)
         matchOperators.$match.condition = { $eq: req.query.condition };
     if (req.query.sex)
-        matchOperators.$match.sex = { $eq: sex };
+        matchOperators.$match.sex = { $eq: req.query.sex };
     
     if (req.query.fromAge) {
         let date = new Date();
