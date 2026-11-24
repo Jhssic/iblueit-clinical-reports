@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 jobs:
   sonarcloud:
@@ -20,24 +21,103 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Gera coverage.xml do report-ai pro Sonar calcular "Coverage on New Code"
-      # de verdade — sem isso o scan roda mas o Quality Gate reprova qualquer
-      # PR com código novo (cobertura sempre aparece como 0%).
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # ------------------------------------------------------------------
+      # IA (report-ai, Python) -> coverage.xml
       #
       # Roda a partir da raiz do repo (não de dentro de report-ai/) com
       # relative_files=True (.coveragerc) de propósito: o scanner do
       # SonarCloud roda dentro de um container, então um coverage.xml com
       # caminho absoluto do runner do GitHub Actions não existe lá dentro —
-      # a cobertura some em silêncio (sem erro, só fica 0%). Caminho relativo
-      # à raiz do repo resolve certo nos dois lados.
-      - name: Testes do report-ai com cobertura
+      # a cobertura some em silêncio (sem erro, só fica 0%).
+      # ------------------------------------------------------------------
+      - name: Testes da IA (report-ai) com cobertura
         run: |
           pip install -r iblueit-server-side/report-ai/requirements.txt
           pip install pytest-cov httpx
           pytest iblueit-server-side/report-ai/ \
             --cov=iblueit-server-side/report-ai \
             --cov-config=iblueit-server-side/report-ai/.coveragerc \
-            --cov-report=xml:iblueit-server-side/report-ai/coverage.xml
+            --cov-report=xml:iblueit-server-side/report-ai/coverage.xml \
+            --cov-report=term
+
+      # ------------------------------------------------------------------
+      # Back-end (Azure Functions, Node) -> coverage/lcov.info
+      # ------------------------------------------------------------------
+      - name: Testes do back-end com cobertura
+        working-directory: iblueit-server-side
+        run: |
+          npm ci
+          npm test
+
+      # ------------------------------------------------------------------
+      # Front-end (React) -> coverage/lcov.info
+      # --legacy-peer-deps: mesmo motivo do Dockerfile do front (React 16 com
+      # libs que pedem React 17/18 como peer dependency).
+      # ------------------------------------------------------------------
+      - name: Testes do front-end com cobertura
+        working-directory: iblueit-health-Infocharts
+        env:
+          CI: "true"
+        run: |
+          npm ci --legacy-peer-deps
+          npm run test:coverage
+
+      # O Jest grava no lcov.info o caminho do arquivo relativo à pasta do
+      # próprio projeto (ex: "src/app.js") ou absoluto do runner. O scanner
+      # do Sonar resolve a partir da RAIZ do repo e roda num container com
+      # outro caminho absoluto — nos dois casos a cobertura sumiria em
+      # silêncio (0%). Normaliza tudo para caminho relativo à raiz do repo.
+      - name: Normaliza caminhos dos relatórios lcov
+        run: |
+          for dir in iblueit-server-side iblueit-health-Infocharts; do
+            sed -E -i \
+              -e "s#^SF:${GITHUB_WORKSPACE}/#SF:#" \
+              -e "t" \
+              -e "\#^SF:${dir}/#b" \
+              -e "s#^SF:([^/])#SF:${dir}/\1#" \
+              "$dir/coverage/lcov.info"
+          done
+          head -n 3 iblueit-health-Infocharts/coverage/lcov.info iblueit-server-side/coverage/lcov.info
+
+      # Resumo da cobertura direto na página da execução do Actions (aba
+      # "Summary"), pra não depender só do comentário do Sonar no PR.
+      - name: Resumo da cobertura
+        if: always()
+        run: |
+          lcov_pct() {
+            awk -F: '/^LF:/{lf+=$2} /^LH:/{lh+=$2} END{ if (lf>0) printf "%.1f%% (%d/%d linhas)", lh*100/lf, lh, lf; else print "sem relatório" }' "$1" 2>/dev/null || echo "sem relatório"
+          }
+          py_pct() {
+            python -c "import xml.etree.ElementTree as E; r=E.parse('$1').getroot(); print('%.1f%% (%s/%s linhas)' % (float(r.get('line-rate'))*100, r.get('lines-covered'), r.get('lines-valid')))" 2>/dev/null || echo "sem relatório"
+          }
+          {
+            echo "## Cobertura de testes"
+            echo ""
+            echo "| Parte | Cobertura de linhas |"
+            echo "|---|---|"
+            echo "| Front-end (React) | $(lcov_pct iblueit-health-Infocharts/coverage/lcov.info) |"
+            echo "| Back-end (Azure Functions) | $(lcov_pct iblueit-server-side/coverage/lcov.info) |"
+            echo "| IA (report-ai) | $(py_pct iblueit-server-side/report-ai/coverage.xml) |"
+            echo ""
+            echo "Relatório HTML detalhado: baixe o artefato **relatorios-de-cobertura** no fim desta página."
+            echo "Painel completo: https://sonarcloud.io/summary/overall?id=Jhssic_iblueit-clinical-reports"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publica relatórios de cobertura como artefato
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorios-de-cobertura
+          path: |
+            iblueit-health-Infocharts/coverage/
+            iblueit-server-side/coverage/
+            iblueit-server-side/report-ai/coverage.xml
+          if-no-files-found: warn
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v3

@@ -7,3 +7,7 @@ test
 tsconfig.json
 report-ai
 node_modules
+# Testes e relatórios de cobertura não vão pro pacote do Function App
+*.test.js
+test-utils
+coverage
