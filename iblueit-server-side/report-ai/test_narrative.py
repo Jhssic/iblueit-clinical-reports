@@ -439,3 +439,12 @@ def test_generate_via_llm_json_sem_resumo_cai_pro_template(monkeypatch):
     result = narrative._generate_via_llm(_PAYLOAD_LLM, api_key="fake-key")
     assert result["generatedBy"] == "template"
     assert result["coerenciaVerificada"] is True
+
+
+def test_strip_markdown_fence_casos():
+    assert narrative._strip_markdown_fence('{"a": 1}') == '{"a": 1}'
+    assert narrative._strip_markdown_fence('```json\n{"a": 1}\n```') == '{"a": 1}'
+    assert narrative._strip_markdown_fence('```JSON {"a": 1} ```') == '{"a": 1}'
+    assert narrative._strip_markdown_fence('```\n{"a": 1}\n```') == '{"a": 1}'
+    # Fence aberta sem fechamento: remove só a abertura.
+    assert narrative._strip_markdown_fence('```json\n{"a": 1}') == '{"a": 1}'

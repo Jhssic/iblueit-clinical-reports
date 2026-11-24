@@ -313,6 +313,22 @@ def generate(payload: dict) -> dict:
     }
 
 
+def _strip_markdown_fence(text: str) -> str:
+    """Remove o bloco markdown (```json ... ```) que alguns modelos colocam em
+    volta do JSON. Feito com operações de string em vez de regex: a regex
+    anterior tinha backtracking super-linear e precedência ambígua (Sonar)."""
+    text = text.strip()
+    if not text.startswith("```"):
+        return text
+    text = text[3:]
+    if text[:4].lower() == "json":
+        text = text[4:]
+    text = text.strip()
+    if text.endswith("```"):
+        text = text[:-3].rstrip()
+    return text
+
+
 def _generate_via_llm(payload: dict, api_key: str) -> dict:
     """Chamada real ao LLM via Groq (API compatível com OpenAI).
     Usada automaticamente quando GROQ_API_KEY está configurada no ambiente."""
@@ -387,8 +403,7 @@ variáveis DJ, PJ, CGc, FR, PEmax, PImax e EB; ou null se for a primeira sessão
         response_text = response.choices[0].message.content.strip()
         # Alguns modelos embrulham a resposta em um bloco markdown (```json ... ```)
         # mesmo quando instruídos a responder só em JSON — remove o fence antes de parsear.
-        if response_text.startswith("```"):
-            response_text = re.sub(r"^```(?:json)?\s*|\s*```$", "", response_text, flags=re.IGNORECASE)
+        response_text = _strip_markdown_fence(response_text)
         parsed = _json.loads(response_text)
     except Exception:
         return _fallback_template()
