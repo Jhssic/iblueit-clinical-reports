@@ -15,7 +15,7 @@
 
 | O quê | Link |
 | --- | --- |
-| Aplicação em produção | **APP_URL** |
+| Aplicação em produção | **https://iblueit-frontend.salmonbeach-37023061.francecentral.azurecontainerapps.io** (relatório clínico: https://iblueit-frontend.salmonbeach-37023061.francecentral.azurecontainerapps.io/relatorio-clinico) |
 | Documentação (Wiki) | https://github.com/Jhssic/iblueit-clinical-reports/wiki |
 | Qualidade e cobertura (SonarCloud) | https://sonarcloud.io/summary/overall?id=Jhssic_iblueit-clinical-reports |
 | Pipelines de CI/CD (GitHub Actions) | https://github.com/Jhssic/iblueit-clinical-reports/actions |
