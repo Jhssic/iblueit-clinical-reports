@@ -405,6 +405,9 @@ variáveis DJ, PJ, CGc, FR, PEmax, PImax e EB; ou null se for a primeira sessão
         response = client.chat.completions.create(
             model=model,
             max_tokens=1024,
+            # temperature 0: a mesma entrada gera (praticamente) o mesmo texto,
+            # o que torna o relatório replicável e auditável.
+            temperature=0,
             messages=[{"role": "user", "content": prompt}],
         )
         response_text = response.choices[0].message.content.strip()

@@ -469,3 +469,23 @@ def test_strip_markdown_fence_casos():
     assert narrative._strip_markdown_fence('```\n{"a": 1}\n```') == '{"a": 1}'
     # Fence aberta sem fechamento: remove só a abertura.
     assert narrative._strip_markdown_fence('```json\n{"a": 1}') == '{"a": 1}'
+
+
+def test_generate_via_llm_usa_temperatura_zero_para_ser_replicavel(monkeypatch):
+    chamadas = []
+
+    class _Completions:
+        @staticmethod
+        def create(**kwargs):
+            chamadas.append(kwargs)
+            message = type("Msg", (), {"content": '{"resumoSessao": "Resumo."}'})()
+            choice = type("Choice", (), {"message": message})()
+            return type("Resp", (), {"choices": [choice]})()
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            self.chat = type("Chat", (), {"completions": _Completions})()
+
+    monkeypatch.setattr(openai, "OpenAI", _Client)
+    narrative._generate_via_llm(_PAYLOAD_LLM, api_key="fake-key")
+    assert chamadas[0]["temperature"] == 0

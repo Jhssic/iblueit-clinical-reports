@@ -11,6 +11,30 @@
 | **Data da Proposta** | 12/04/2026 |
 | **Versão** | 1.3 — Outubro/2026 |
 
+### Links da entrega
+
+| O quê | Link |
+| --- | --- |
+| Aplicação em produção | **https://iblueit-frontend.salmonbeach-37023061.francecentral.azurecontainerapps.io** (relatório clínico: https://iblueit-frontend.salmonbeach-37023061.francecentral.azurecontainerapps.io/relatorio-clinico) |
+| Documentação (Wiki) | https://github.com/Jhssic/iblueit-clinical-reports/wiki |
+| Qualidade e cobertura (SonarCloud) | https://sonarcloud.io/summary/overall?id=Jhssic_iblueit-clinical-reports |
+| Pipelines de CI/CD (GitHub Actions) | https://github.com/Jhssic/iblueit-clinical-reports/actions |
+| Monitoramento (Grafana) | ver a página [Observabilidade](https://github.com/Jhssic/iblueit-clinical-reports/wiki/Observabilidade) da Wiki |
+
+### Autoria e origem do código
+
+Este repositório reúne o código do ecossistema **I Blue It 5.0**, desenvolvido no laboratório UDESC-LARVA ([iblueit-health-Infocharts](https://github.com/UDESC-LARVA/iblueit-health-Infocharts) e [iblueit-server-side](https://github.com/UDESC-LARVA/iblueit-server-side)), com o módulo de relatório clínico construído neste projeto.
+
+**Herdado do I Blue It 5.0 (UDESC-LARVA):** a plataforma Health InfoCharts (login, cadastro de pacientes, telas de plataforma, minigames e calibração), as Azure Functions de contas, pacientes, sessões e parâmetros de jogo, e o schema do MongoDB.
+
+**Desenvolvido neste projeto (autoria de Jhessica Maria Alves Fernandes):**
+
+- serviço de IA `iblueit-server-side/report-ai/` (Python/FastAPI): geração do texto clínico com LLM, verificação de coerência, fallback por template e detecção de anomalia com Isolation Forest;
+- Azure Functions do relatório clínico e dos alertas (`GenerateClinicalReport`, `GetClinicalReports`, `ArchiveClinicalReport`, `DeleteClinicalReport`, `GetAlertCriteria`, `SaveAlertCriteria`) e os módulos `shared/clinicalMetrics.js` e `shared/alertEvaluation.js`;
+- tela de relatório clínico no front (`src/pages/clinicalReport/`), com status do paciente, gráficos, alertas e exportação em PDF;
+- testes automatizados do front, do back e da IA, além das correções feitas no código herdado para atender o SonarCloud;
+- infraestrutura: Dockerfiles, deploy na Azure, pipelines do GitHub Actions, SonarCloud e monitoramento com Grafana.
+
 ---
 
 ## 1. Visão do Produto e Impacto (O Problema)
