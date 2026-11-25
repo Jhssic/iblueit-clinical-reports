@@ -33,7 +33,6 @@ const GameConfigurationCreatePage = () => {
 
   const classes = useStyles();
   const [phase, setPhase] = useState('');
-  const [, setStageId] = useState('');
   const [level, setLevel] = useState('');
   const [Loops, setLoops] = useState('');
   const [objectSpeedFactor, setObjectSpeedFactor] = useState('');
@@ -48,7 +47,6 @@ const GameConfigurationCreatePage = () => {
     const setInputsPacientGameParameter = (pacientGameParameter) => {
       if (pacientGameParameter) {
         setPhase(pacientGameParameter?.phase || 1);
-        setStageId(pacientGameParameter?.stageId || 1);
         setLevel(pacientGameParameter?.level || 1);
         setLoops(pacientGameParameter?.Loops || 1);
         setObjectSpeedFactor(pacientGameParameter?.ObjectSpeedFactor?.$numberDecimal || 1.0);

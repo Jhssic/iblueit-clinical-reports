@@ -42,8 +42,6 @@ const CalibrationHistoryPage = () => {
   const [device, setDevice] = useState("Pitaco");
   const [exercise, setExercise] = useState("RespiratoryFrequency");
   const [exerciseAfterRequest, setExerciseAfterRequest] = useState("RespiratoryFrequency");
-  const [, setStartDate] = useState();
-  const [, setFinalDate] = useState();
 
   const initialState = () => {
     setWarning('Selecione os filtros desejados.')
@@ -51,8 +49,6 @@ const CalibrationHistoryPage = () => {
     setDevice("Pitaco");
     setExercise("RespiratoryFrequency");
     setExerciseAfterRequest("RespiratoryFrequency");
-    setStartDate();
-    setFinalDate();
   }
 
   const handleFilterButton = async () => {
@@ -102,10 +98,8 @@ const CalibrationHistoryPage = () => {
           />
         </Box>
         <Box sx={{ marginRight: 2 }}>
-          <DateInterval
-            handleStartDateChangeCallBack={setStartDate}
-            handleFinalDateChangeCallBack={setFinalDate}
-          />
+          {/* O serviço desta tela ainda não filtra por data: os campos só são exibidos. */}
+          <DateInterval />
         </Box>
 
         <Button

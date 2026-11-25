@@ -62,7 +62,7 @@ const DateInput = ({ title, handleDateChangeCallBack, disabled = false }) => {
         type="date"
         disabled={disabled}
         onChange={(event) => {
-          handleDateChangeCallBack(event.target.value);
+          handleDateChangeCallBack?.(event.target.value);
         }}
       />
     </Box>

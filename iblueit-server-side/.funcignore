@@ -11,3 +11,6 @@ node_modules
 *.test.js
 test-utils
 coverage
+# Scripts avulsos de desenvolvimento (não são Functions)
+seed-test-data.js
+export-patient-data.js
