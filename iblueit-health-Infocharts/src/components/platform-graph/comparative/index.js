@@ -4,6 +4,52 @@ import { ComposedChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveCo
 import { Box } from "@mui/material";
 import './style.css'
 
+const buildDataKey = (name, viewType) => {
+  if (viewType === 1) {
+    return `${name}_Exp`;
+  }
+  if (viewType === 2) {
+    return `${name}_Ins`
+  }
+  return '';
+};
+
+const CustomTooltip = ({ active, payload, label, viewType, unitOfMeasurement }) => {
+  const setDataKey = (name) => buildDataKey(name, viewType);
+
+  if (active && payload?.length) {
+    const values = [];
+    let messageFlowValue = '';
+    let messageExpectedValues = '';
+    let ratioSelectedPatients = '';
+
+    for (const element of payload) {
+      if (element.dataKey === 'scoreComp')
+        ratioSelectedPatients = `Razão comum de pacientes selecionados: ${element.value}%`
+
+      if (element.name === setDataKey("expectedValues_B")) {
+        values.push(element.value);
+      } else if (element.dataKey === setDataKey("expectedValues_A")) {
+        messageExpectedValues = element.name;
+        values.push(element.value);
+      } else {
+        messageFlowValue = `${element.name}: ${element.value}${unitOfMeasurement}`;
+      }
+    }
+    if (values.length) messageExpectedValues = `${messageExpectedValues}: ${values[0]}${unitOfMeasurement} - ${values[0] + values[1]}${unitOfMeasurement}`
+
+    return (
+      <div className="custom-tooltip" style={{ backgroundColor: '#F9FAFC', border: 'solid 1px #E9EAED' }}>
+        <p className="label" style={{ margin: '0 5px' }}>{label}</p>
+        {ratioSelectedPatients && <p className="intro" style={{ margin: '0 8px' }}>{ratioSelectedPatients}</p>}
+        <p className="intro" style={{ margin: '0 8px' }}>{messageFlowValue}</p>
+        <p className="intro" style={{ margin: '0 8px' }}>{messageExpectedValues}</p>
+      </div >
+    );
+  }
+  return null;
+};
+
 const PlatformGraphComparative = ({ tableLegend_Y, tableLegend_X, graphData, viewType, unitOfMeasurement }) => {
   const [mockedData, setMockedData] = useState([])
 
@@ -129,40 +175,6 @@ const PlatformGraphComparative = ({ tableLegend_Y, tableLegend_X, graphData, vie
   }];
 
 
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      const values = [];
-      let messageFlowValue = '';
-      let messageExpectedValues = '';
-      let ratioSelectedPatients = '';
-
-      for (const element of payload) {
-        if (element.dataKey === 'scoreComp')
-          ratioSelectedPatients = `Razão comum de pacientes selecionados: ${element.value}%`
-
-        if (element.name === setDataKey("expectedValues_B")) {
-          values.push(element.value);
-        } else if (element.dataKey === setDataKey("expectedValues_A")) {
-          messageExpectedValues = element.name;
-          values.push(element.value);
-        } else {
-          messageFlowValue = `${element.name}: ${element.value}${unitOfMeasurement}`;
-        }
-      }
-      if (values.length) messageExpectedValues = `${messageExpectedValues}: ${values[0]}${unitOfMeasurement} - ${values[0] + values[1]}${unitOfMeasurement}`
-
-      return (
-        <div className="custom-tooltip" style={{ backgroundColor: '#F9FAFC', border: 'solid 1px #E9EAED' }}>
-          <p className="label" style={{ margin: '0 5px' }}>{label}</p>
-          {ratioSelectedPatients && <p className="intro" style={{ margin: '0 8px' }}>{ratioSelectedPatients}</p>}
-          <p className="intro" style={{ margin: '0 8px' }}>{messageFlowValue}</p>
-          <p className="intro" style={{ margin: '0 8px' }}>{messageExpectedValues}</p>
-        </div >
-      );
-    }
-    return null;
-  };
-
   const handleLegendClick = (key) => {
     if (key === setDataKey("expectedValues_A")) setExpectedValuesHide(!expectedValuesHide)
     if (key === "scoreComp") setEqualRatioSelectedPatientsHide(!equalRatioSelectedPatientsHide)
@@ -174,14 +186,17 @@ const PlatformGraphComparative = ({ tableLegend_Y, tableLegend_X, graphData, vie
       {props.payload.map((entry, index) => (
         (entry.value !== setDataKey("expectedValues_B")) && (
           <li
-            onClick={() => handleLegendClick(entry.dataKey)}
             className={`recharts-legend-item legend-item-${index}  ${(entry.dataKey !== 'flowValue_Bar' && entry.dataKey !== setDataKey("flowValue") && expectedValuesHide) ? 'inactive' : ''} ${(!expectedValuesHide && entry.dataKey !== 'flowValue_Bar' && entry.dataKey !== setDataKey("flowValue")) ? 'legend' : ''}`}
             style={{ display: 'flex', marginRight: '10px' }}
-            key={`item-${index}`}>
-            {
-              getLinearScaleIcon(entry.dataKey)
-            }
-            {entry.value}
+            key={`item-${entry.dataKey}`}>
+            <button
+              type="button"
+              className="legend-button"
+              onClick={() => handleLegendClick(entry.dataKey)}
+            >
+              {getLinearScaleIcon(entry.dataKey)}
+              {entry.value}
+            </button>
           </li>
         )
       ))}
@@ -200,15 +215,7 @@ const PlatformGraphComparative = ({ tableLegend_Y, tableLegend_X, graphData, vie
     return <LinearScaleIcon sx={{color: color}} />
   }
 
-  const setDataKey = (name) => {
-    if (viewType === 1) {
-      return `${name}_Exp`;
-    }
-    if (viewType === 2) {
-      return `${name}_Ins`
-    }
-    return '';
-  };
+  const setDataKey = (name) => buildDataKey(name, viewType);
 
   return (
     <Box sx={{ height: 500, overflow: "hidden" }} >
@@ -227,7 +234,7 @@ const PlatformGraphComparative = ({ tableLegend_Y, tableLegend_X, graphData, vie
           <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
           <XAxis dataKey="xAxisPosition" />
           <YAxis width={100} dx={0} label={{ value: tableLegend_Y, angle: -90, position: 'center', fill: 'black', opacity: 0.5 }} tickLine={false} />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip viewType={viewType} unitOfMeasurement={unitOfMeasurement} />} />
           <Legend content={renderLegend} />
           {(viewType === 1 || viewType === 2) ? (
             <>

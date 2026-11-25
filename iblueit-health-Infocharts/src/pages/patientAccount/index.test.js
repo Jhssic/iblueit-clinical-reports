@@ -45,6 +45,18 @@ describe("Página Conta do Paciente", () => {
     await waitFor(() => expect(context.addNotification).toHaveBeenCalledWith("success", "Usuário e Senha copiados"));
   });
 
+  it("notifica erro quando não consegue copiar usuário e senha", async () => {
+    getPatientAccount.mockResolvedValue({ username: "maria.p", password: "123" });
+    navigator.clipboard.writeText.mockRejectedValue(new Error("sem permissão"));
+    const { context } = renderizar();
+    await screen.findByText(/dão acesso a conta do\(a\) usuário\(a\) Maria/);
+    fireEvent.click(screen.getByRole("button", { name: /copiar Usuário e Senha/ }));
+    await waitFor(() =>
+      expect(context.addNotification).toHaveBeenCalledWith("error", "Não foi possível copiar Usuário e Senha.")
+    );
+    expect(context.addNotification).not.toHaveBeenCalledWith("success", "Usuário e Senha copiados");
+  });
+
   it("mostra o formulário de criação quando não há conta e alterna visibilidade das senhas", async () => {
     getPatientAccount.mockResolvedValue(null);
     renderizar();

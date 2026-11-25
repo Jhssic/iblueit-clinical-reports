@@ -44,8 +44,8 @@ const DevicesPage = () => {
           flexFlow: "wrap",
         }}
       >
-        {historiesCalibrations.map((historyCalibration, index) => (
-          <DeviceCard historyCalibration={historyCalibration} key={`historyCalibration${index}`} />
+        {historiesCalibrations.map((historyCalibration) => (
+          <DeviceCard historyCalibration={historyCalibration} key={historyCalibration.name} />
         ))}
       </Box>
     </Box>

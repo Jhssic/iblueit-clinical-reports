@@ -1,4 +1,4 @@
-module.exports = async function (context, req) {
+module.exports = async function createGameParameter(context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
     mongoose.connect(DATABASE);
@@ -11,7 +11,7 @@ module.exports = async function (context, req) {
     const utils = require('../shared/utils');
     const validations = require('../shared/Validators');
 
-    var isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
+    const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
 
     if (!isVerifiedGameToken) {
         context.res = { status: 403, body: utils.createResponse(false, false, "Chave de acesso inválida.", null, 1) }
@@ -41,17 +41,17 @@ module.exports = async function (context, req) {
     try {
         const GameParameterModels = await GameParameterModel.findOne({ pacientId: gameParameterReq.pacientId }, null, { sort: { created_at: 1 } });
         if (GameParameterModels) {
-            GameParameterModels.stageId = gameParameterReq.stageId,
-            GameParameterModels.phase = gameParameterReq.phase,
-            GameParameterModels.level = gameParameterReq.level,
-            GameParameterModels.ObjectSpeedFactor = gameParameterReq.ObjectSpeedFactor,
-            GameParameterModels.Loops = gameParameterReq.Loops,
-            GameParameterModels.HeightIncrement = gameParameterReq.HeightIncrement,
-            GameParameterModels.HeightUpThreshold = gameParameterReq.HeightUpThreshold,
-            GameParameterModels.HeightDownThreshold = gameParameterReq.HeightDownThreshold,
-            GameParameterModels.SizeIncrement = gameParameterReq.SizeIncrement,
-            GameParameterModels.SizeUpThreshold = gameParameterReq.SizeUpThreshold,
-            GameParameterModels.SizeDownThreshold = gameParameterReq.SizeDownThreshold
+            GameParameterModels.stageId = gameParameterReq.stageId;
+            GameParameterModels.phase = gameParameterReq.phase;
+            GameParameterModels.level = gameParameterReq.level;
+            GameParameterModels.ObjectSpeedFactor = gameParameterReq.ObjectSpeedFactor;
+            GameParameterModels.Loops = gameParameterReq.Loops;
+            GameParameterModels.HeightIncrement = gameParameterReq.HeightIncrement;
+            GameParameterModels.HeightUpThreshold = gameParameterReq.HeightUpThreshold;
+            GameParameterModels.HeightDownThreshold = gameParameterReq.HeightDownThreshold;
+            GameParameterModels.SizeIncrement = gameParameterReq.SizeIncrement;
+            GameParameterModels.SizeUpThreshold = gameParameterReq.SizeUpThreshold;
+            GameParameterModels.SizeDownThreshold = gameParameterReq.SizeDownThreshold;
             const savedGameParameterReq = await GameParameterModels.save();
             context.log("[DB UPDATING] - Game Parameter: ", savedGameParameterReq);
             context.res = { status: 201, body: utils.createResponse(true, true, "Paciente salvo com sucesso.", savedGameParameterReq, null) }

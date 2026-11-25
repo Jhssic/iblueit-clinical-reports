@@ -53,6 +53,7 @@ describe("getGeneralStatisticsDataFromTheMiniGame", () => {
 
     expect(grafico).toHaveLength(1);
     expect(grafico[0].sessionDate).toBe(dia("2024-01-01T09:00:00"));
+    expect(grafico[0].flowValue).toBe(9);
   });
 
   it("retorna lista vazia quando o servidor não devolve sessões", async () => {

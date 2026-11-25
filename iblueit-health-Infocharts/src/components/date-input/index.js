@@ -46,7 +46,6 @@ const useStyles = makeStyles((theme) =>
 
 const DateInput = ({ title, handleDateChangeCallBack, disabled = false }) => {
   const classes = useStyles();
-  const [date, setDate] = React.useState(new Date());
   return (
     <Box sx={{ display: "flex", flexDirection: "column" }}>
       <Typography>{title}</Typography>
@@ -63,8 +62,7 @@ const DateInput = ({ title, handleDateChangeCallBack, disabled = false }) => {
         type="date"
         disabled={disabled}
         onChange={(event) => {
-          setDate(event.target.value);
-          handleDateChangeCallBack(event.target.value);
+          handleDateChangeCallBack?.(event.target.value);
         }}
       />
     </Box>

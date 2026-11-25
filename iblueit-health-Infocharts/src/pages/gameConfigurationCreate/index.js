@@ -23,6 +23,9 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
+// A média dos vizinhos não tem paciente associado; os demais são identificados pelo paciente.
+const neighborKey = (gameParameter) =>
+  gameParameter.isAVG ? 'media-avaliacoes' : `gameParameter-${gameParameter.pacientId ?? gameParameter.pacientName}`;
 
 const GameConfigurationCreatePage = () => {
   const context = useMyContext()
@@ -30,7 +33,6 @@ const GameConfigurationCreatePage = () => {
 
   const classes = useStyles();
   const [phase, setPhase] = useState('');
-  const [stageId, setStageId] = useState('');
   const [level, setLevel] = useState('');
   const [Loops, setLoops] = useState('');
   const [objectSpeedFactor, setObjectSpeedFactor] = useState('');
@@ -45,7 +47,6 @@ const GameConfigurationCreatePage = () => {
     const setInputsPacientGameParameter = (pacientGameParameter) => {
       if (pacientGameParameter) {
         setPhase(pacientGameParameter?.phase || 1);
-        setStageId(pacientGameParameter?.stageId || 1);
         setLevel(pacientGameParameter?.level || 1);
         setLoops(pacientGameParameter?.Loops || 1);
         setObjectSpeedFactor(pacientGameParameter?.ObjectSpeedFactor?.$numberDecimal || 1.0);
@@ -111,7 +112,9 @@ const GameConfigurationCreatePage = () => {
         };
         await createGameParameter(context, gameParameter)
         context.addNotification('success', 'Salvo com Sucesso');
-      } catch (error) { }
+      } catch (error) {
+        console.error(error);
+      }
     };
   }
 
@@ -359,7 +362,7 @@ const GameConfigurationCreatePage = () => {
         }}
       >
         {gameParameterNeighborInformations.map((gameParameterNeighborInformation, index) => (
-          <GameParameterCard gameParameter={gameParameterNeighborInformation} index={index} selectNeighborInformation={selectNeighborInformation} key={`gameParameter${index}`} />
+          <GameParameterCard gameParameter={gameParameterNeighborInformation} index={index} selectNeighborInformation={selectNeighborInformation} key={neighborKey(gameParameterNeighborInformation)} />
         ))}
       </Box>
     </Box>

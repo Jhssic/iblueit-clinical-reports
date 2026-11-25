@@ -45,8 +45,6 @@ const ResultPage = () => {
   const [device, setDevice] = useState("Pitaco");
   const [visualization, setVisualization] = useState("result");
   const [visualizationAfterRequest, setVisualizationAfterRequest] = useState("result");
-  const [startDate, setStartDate] = useState();
-  const [finalDate, setFinalDate] = useState();
   const [microCardsValues, setMicroCardsValues] = useState([
     { value: 0, title: "Pontuação acumulada" },
     { value: 0, title: "Níveis desbloqueados" },
@@ -59,8 +57,6 @@ const ResultPage = () => {
     setDevice("Pitaco");
     setVisualization("result");
     setVisualizationAfterRequest("result");
-    setStartDate();
-    setFinalDate();
   }
 
   const fetchMicroCardsValues = async () => {
@@ -99,9 +95,9 @@ const ResultPage = () => {
         Resultados na plataforma
       </Typography>
       <Box sx={{ marginTop: 4, display: "flex", flexWrap: "wrap" }}>
-        {microCardsValues.map((microCardValue, index) => (
+        {microCardsValues.map((microCardValue) => (
           <MicroCard
-            key={`ResultPage${index}`}
+            key={microCardValue.title}
             title={microCardValue.title}
             value={microCardValue.value}
           />
@@ -124,10 +120,8 @@ const ResultPage = () => {
           />
         </Box>
         <Box sx={{ marginRight: 2 }}>
-          <DateInterval
-            handleStartDateChangeCallBack={setStartDate}
-            handleFinalDateChangeCallBack={setFinalDate}
-          />
+          {/* O serviço desta tela ainda não filtra por data: os campos só são exibidos. */}
+          <DateInterval />
         </Box>
         <Button
           className={classes.button}

@@ -1,5 +1,5 @@
-module.exports = async function (context, req) {
-    var axios = require('axios');
+module.exports = async function getGameParameterNeighborInformation(context, req) {
+    const axios = require('axios');
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
     const URL_API_IA = process.env.URL_API_IA;
@@ -14,7 +14,7 @@ module.exports = async function (context, req) {
 
     await utils.validateHeaders(req.headers, context);
 
-    var isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
+    const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
 
     if (!isVerifiedGameToken) {
         context.res = {
@@ -36,9 +36,8 @@ module.exports = async function (context, req) {
             body: utils.createResponse(false, false, "Parâmetros de consulta inexistentes.", null, 300)
         }
         context.done();
-        return;
     } else {
-        var config = {
+        const config = {
             method: 'get',
             url: URL_API_IA + '/neighborsByPacient',
             headers: { 'Content-Type': 'application/json' },
@@ -46,8 +45,8 @@ module.exports = async function (context, req) {
                 pacientId: pacientId
             }
         };
-        var neighborsPacientReturn;
-        const functionResponse = await axios(config).then(function (response) {
+        let neighborsPacientReturn;
+        await axios(config).then(function (response) {
             neighborsPacientReturn = response.data.neighborsPacientReturn
             if (!neighborsPacientReturn.length > 0) {
                 context.res = {
@@ -56,7 +55,6 @@ module.exports = async function (context, req) {
                 }
                 context.done();
             }
-            return;
         }).catch(function (error) {
             console.log(error);
             context.res = {
@@ -64,10 +62,9 @@ module.exports = async function (context, req) {
                 body: utils.createResponse(false, false, "Erro na Requisição", null, 1)
             }
             context.done();
-            return;
         });
-        var neighborsPacientIds = neighborsPacientReturn.map((neighborsPacient) => neighborsPacient.pacientId)
-        var arrayConfigurations = []
+        const neighborsPacientIds = neighborsPacientReturn.map((neighborsPacient) => neighborsPacient.pacientId)
+        const arrayConfigurations = []
         const GameParameters = await GameParameterModel.find({ "pacientId": neighborsPacientIds });
         const GameParametersLength = GameParameters.length;
         GameParameters.forEach(function (GameParameter) {
@@ -89,19 +86,19 @@ module.exports = async function (context, req) {
             })
         })
         arrayConfigurations.push({
-            "stageId": Number.parseInt((arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["stageId"] }, 0)) / GameParametersLength, 10),
-            "phase": Number.parseInt((arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["phase"] }, 0)) / GameParametersLength, 10),
-            "level": Number.parseInt((arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["level"] }, 0)) / GameParametersLength, 10),
+            "stageId": Number.parseInt((arrayConfigurations.reduce((sum, configuration) => sum + configuration["stageId"], 0)) / GameParametersLength, 10),
+            "phase": Number.parseInt((arrayConfigurations.reduce((sum, configuration) => sum + configuration["phase"], 0)) / GameParametersLength, 10),
+            "level": Number.parseInt((arrayConfigurations.reduce((sum, configuration) => sum + configuration["level"], 0)) / GameParametersLength, 10),
             "pacientId": null,
             "pacientName": null,
-            "ObjectSpeedFactor": (arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["ObjectSpeedFactor"] }, 0)) / GameParametersLength,
-            "Loops": Number.parseInt((arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["Loops"] }, 0)) / GameParametersLength, 10),
-            "HeightIncrement": (arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["HeightIncrement"] }, 0)) / GameParametersLength,
-            "HeightUpThreshold": (arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["HeightUpThreshold"] }, 0)) / GameParametersLength,
-            "HeightDownThreshold": (arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["HeightDownThreshold"] }, 0)) / GameParametersLength,
-            "SizeIncrement": (arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["SizeIncrement"] }, 0)) / GameParametersLength,
-            "SizeUpThreshold": (arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["SizeUpThreshold"] }, 0)) / GameParametersLength,
-            "SizeDownThreshold": (arrayConfigurations.reduce((sum, configuration) => { return sum += configuration["SizeDownThreshold"] }, 0)) / GameParametersLength,            
+            "ObjectSpeedFactor": (arrayConfigurations.reduce((sum, configuration) => sum + configuration["ObjectSpeedFactor"], 0)) / GameParametersLength,
+            "Loops": Number.parseInt((arrayConfigurations.reduce((sum, configuration) => sum + configuration["Loops"], 0)) / GameParametersLength, 10),
+            "HeightIncrement": (arrayConfigurations.reduce((sum, configuration) => sum + configuration["HeightIncrement"], 0)) / GameParametersLength,
+            "HeightUpThreshold": (arrayConfigurations.reduce((sum, configuration) => sum + configuration["HeightUpThreshold"], 0)) / GameParametersLength,
+            "HeightDownThreshold": (arrayConfigurations.reduce((sum, configuration) => sum + configuration["HeightDownThreshold"], 0)) / GameParametersLength,
+            "SizeIncrement": (arrayConfigurations.reduce((sum, configuration) => sum + configuration["SizeIncrement"], 0)) / GameParametersLength,
+            "SizeUpThreshold": (arrayConfigurations.reduce((sum, configuration) => sum + configuration["SizeUpThreshold"], 0)) / GameParametersLength,
+            "SizeDownThreshold": (arrayConfigurations.reduce((sum, configuration) => sum + configuration["SizeDownThreshold"], 0)) / GameParametersLength,
             "isAVG": true
         })
         context.res = {

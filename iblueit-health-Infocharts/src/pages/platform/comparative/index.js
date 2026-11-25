@@ -119,31 +119,30 @@ const PlatformComparative = () => {
 			if (!graphData.length) {
 				context.addNotification('error', 'Não existe histórico para os filtros selecionados.');
 				setWarning('Não existe histórico para os filtros selecionados.');
-			} else {
-				if (visualization === 'expiratory_peak') {
-					setTableLegend_X('Picos Expiratórios do paciente selecionado');
-					validateTheTypeOfUnitOfMeasure();
-					setTableLegend_Y(`Pico Expiratório (${unitOfMeasurement})`);
-					setViewType(1);
-				} else if (visualization === 'inspiratory_peak') {
-					setTableLegend_X('Picos Inspiratórios do paciente selecionado');
-					validateTheTypeOfUnitOfMeasure();
-					setTableLegend_Y(`Pico Inspiratórios (${unitOfMeasurement})`);
-					setViewType(2);
-				} else if (visualization === 'score') {
-					setTableLegend_Y(context.patientName);
-					setTableLegend_Y('Pontuação');
-					setUnitOfMeasurement('Pontos');
-					setViewType(4);
-				} else if (visualization === 'ratio') {
-					setTableLegend_X(context.patientName);
-					setTableLegend_Y('Porcentagem (%)');
-					setUnitOfMeasurement('%');
-					setViewType(4);
-				}
+			} else if (visualization === 'expiratory_peak') {
+				setTableLegend_X('Picos Expiratórios do paciente selecionado');
+				validateTheTypeOfUnitOfMeasure();
+				setTableLegend_Y(`Pico Expiratório (${unitOfMeasurement})`);
+				setViewType(1);
+			} else if (visualization === 'inspiratory_peak') {
+				setTableLegend_X('Picos Inspiratórios do paciente selecionado');
+				validateTheTypeOfUnitOfMeasure();
+				setTableLegend_Y(`Pico Inspiratórios (${unitOfMeasurement})`);
+				setViewType(2);
+			} else if (visualization === 'score') {
+				setTableLegend_Y(context.patientName);
+				setTableLegend_Y('Pontuação');
+				setUnitOfMeasurement('Pontos');
+				setViewType(4);
+			} else if (visualization === 'ratio') {
+				setTableLegend_X(context.patientName);
+				setTableLegend_Y('Porcentagem (%)');
+				setUnitOfMeasurement('%');
+				setViewType(4);
 			}
 		} catch (error) {
-			setGraphData([...[]])
+			console.error(error);
+			setGraphData([])
 		}
 	};
 

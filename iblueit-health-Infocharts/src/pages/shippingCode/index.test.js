@@ -29,6 +29,17 @@ describe("Página de Código de Envio", () => {
     await waitFor(() => expect(context.addNotification).toHaveBeenCalledWith("success", "Código copiado"));
   });
 
+  it("notifica erro quando não consegue copiar o código", async () => {
+    salvarCredenciais({ gameToken: "ABC-123" });
+    navigator.clipboard.writeText.mockRejectedValue(new Error("sem permissão"));
+    const { context } = renderWithProviders(<ShippingCode />);
+    fireEvent.click(screen.getByTestId("ContentCopyIcon").closest("button"));
+    await waitFor(() =>
+      expect(context.addNotification).toHaveBeenCalledWith("error", "Não foi possível copiar o código.")
+    );
+    expect(context.addNotification).not.toHaveBeenCalledWith("success", "Código copiado");
+  });
+
   it("gera um novo código quando o usuário ainda não possui", async () => {
     salvarCredenciais({ gameToken: null });
     requestGenerateShippingCode.mockImplementation(async () => updateAuthenticationData("gameToken", "NOVO-999"));

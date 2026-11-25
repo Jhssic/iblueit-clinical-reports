@@ -1,4 +1,4 @@
-module.exports = async function (context, req) {
+module.exports = async function saveAlertCriteria(context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
     if (mongoose.connection.readyState === 0) {
@@ -23,7 +23,7 @@ module.exports = async function (context, req) {
 
     // RN01: apenas Administrator pode configurar alertas
     const requestingUser = await UserAccountModel.findOne({ "gameToken.token": req.headers.gametoken });
-    if (!requestingUser || requestingUser.role !== "Administrator") {
+    if (requestingUser?.role !== "Administrator") {
         context.res = {
             status: 403,
             body: utils.createResponse(false, false, "Apenas profissionais autenticados podem configurar alertas.", null, 1),

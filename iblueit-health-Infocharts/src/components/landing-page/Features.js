@@ -72,7 +72,7 @@ export default function Features() {
           <Grid container item gap={1} sx={{ display: { xs: 'auto', sm: 'none' } }}>
             {items.map(({ title }, index) => (
               <Chip
-                key={index}
+                key={title}
                 label={title}
                 onClick={() => handleItemClick(index)}
                 sx={{
@@ -156,7 +156,7 @@ export default function Features() {
           >
             {items.map(({ icon, title, description }, index) => (
               <Card
-                key={index}
+                key={title}
                 variant="outlined"
                 component={Button}
                 onClick={() => handleItemClick(index)}

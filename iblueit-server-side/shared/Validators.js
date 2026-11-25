@@ -63,7 +63,7 @@ exports.gameParameterValidator = (gameParameterReq) => {
 
 exports.pacientSaveValidator = (pacientReq) => {
 
-    pacientReq.birthday = pacientReq.birthday.replace(new RegExp('/', 'g'), '-');
+    pacientReq.birthday = pacientReq.birthday.replaceAll('/', '-');
 
     let rules = {
         name: 'required|string',

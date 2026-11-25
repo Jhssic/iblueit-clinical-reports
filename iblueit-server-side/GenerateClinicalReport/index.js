@@ -1,4 +1,54 @@
-module.exports = async function (context, req) {
+const IA_MAX_ATTEMPTS = 3;
+
+// Período anterior, de mesma duração do atual, terminando onde o atual começa.
+async function extractPreviousPeriodMetrics(clinicalMetrics, mongoose, { pacientId, device, start, end }) {
+    const durationMs = end.getTime() - start.getTime();
+    const prevEnd = new Date(start);
+    const prevStart = new Date(start.getTime() - durationMs);
+    return clinicalMetrics.extractMetricsForPeriod({ pacientId, device, start: prevStart, end: prevEnd }, mongoose);
+}
+
+// Métricas da avaliação inicial: primeiro relatório ativo do paciente no mesmo dispositivo.
+async function findInitialMetrics(ClinicalReportModel, pacientId, device) {
+    const firstReport = await ClinicalReportModel.findOne({ pacientId, device, archived: false }).sort({ created_at: 1 });
+    return firstReport ? firstReport.currentMetrics : null;
+}
+
+// Métricas de comparação do relatório. No primeiro relatório (RN06) não há
+// período anterior e a própria medição atual é a avaliação inicial.
+// Evolução (feedback do piloto com o professor): compara sempre com a
+// avaliação inicial do paciente (primeiro relatório, mesmo dispositivo),
+// não com o período anterior — "Avaliação inicial" fica fixa como marco
+// de referência durante o acompanhamento inteiro.
+async function loadComparisonMetrics(clinicalMetrics, mongoose, ClinicalReportModel, { pacientId, device, start, end, isFirstReport, currentMetrics }) {
+    if (isFirstReport) {
+        return { previousMetrics: null, initialMetrics: currentMetrics };
+    }
+    const previous = await extractPreviousPeriodMetrics(clinicalMetrics, mongoose, { pacientId, device, start, end });
+    const initialMetrics = await findInitialMetrics(ClinicalReportModel, pacientId, device);
+    return { previousMetrics: previous.metrics, initialMetrics };
+}
+
+// --- RF05 / FA03: chamada à API de IA (URL_API_IA) ---
+// O Container App do report-ai escala pra 0 réplicas quando ocioso, e o
+// ingress da Azure corta a requisição em ~30s se o container ainda não
+// acordou — o container continua inicializando em segundo plano, então
+// uma segunda tentativa logo em seguida normalmente já encontra ele pronto.
+// As tentativas são sequenciais por definição (retry), por isso o await no loop.
+// Retorna { ok: true, data } no sucesso, ou { ok: false } se todas as tentativas falharem.
+async function requestReportFromAI(axios, iaPayload, context) {
+    for (let attempt = 1; attempt <= IA_MAX_ATTEMPTS; attempt++) {
+        try {
+            const apiRes = await axios.post(`${process.env.URL_API_IA}/generate-report`, iaPayload, { timeout: 60000 });
+            return { ok: true, data: apiRes.data };
+        } catch (iaErr) {
+            context.log(`[URL_API_IA] - ERROR (tentativa ${attempt}/${IA_MAX_ATTEMPTS}): `, iaErr.message);
+        }
+    }
+    return { ok: false };
+}
+
+module.exports = async function generateClinicalReport(context, req) {
     const mongoose = require('mongoose');
     const axios = require('axios');
     const DATABASE = process.env.MongoDbAtlas;
@@ -16,7 +66,6 @@ module.exports = async function (context, req) {
 
     const UserAccountModel = mongoose.model('UserAccount');
     const PacientModel = mongoose.model('Pacient');
-    const PlataformOverviewModel = mongoose.model('PlataformOverview');
     const ClinicalReportModel = mongoose.model('ClinicalReport');
     const AlertRecordModel = mongoose.model('AlertRecord');
 
@@ -107,23 +156,11 @@ module.exports = async function (context, req) {
         const priorReportsCount = await ClinicalReportModel.countDocuments({ pacientId, archived: false });
         const isFirstReport = priorReportsCount === 0;
 
-        // --- período anterior, de mesma duração, para contexto do resumo ---
-        let previous = { metrics: {}, sessionCount: 0 };
-        if (!isFirstReport) {
-            const durationMs = end.getTime() - start.getTime();
-            const prevEnd = new Date(start.getTime());
-            const prevStart = new Date(start.getTime() - durationMs);
-            previous = await clinicalMetrics.extractMetricsForPeriod({ pacientId, device, start: prevStart, end: prevEnd }, mongoose);
-        }
-
-        // --- Evolução (feedback do piloto com o professor): compara sempre com a
-        // avaliação inicial do paciente (primeiro relatório, mesmo dispositivo),
-        // não com o período anterior — "Avaliação inicial" fica fixa como marco
-        // de referência ao longo de todo o acompanhamento.
-        const firstReport = isFirstReport
-            ? null
-            : await ClinicalReportModel.findOne({ pacientId, device, archived: false }).sort({ created_at: 1 });
-        const initialMetrics = isFirstReport ? current.metrics : (firstReport ? firstReport.currentMetrics : null);
+        // --- período anterior (mesma duração) e avaliação inicial, para contexto do resumo ---
+        const { previousMetrics, initialMetrics } = await loadComparisonMetrics(
+            clinicalMetrics, mongoose, ClinicalReportModel,
+            { pacientId, device, start, end, isFirstReport, currentMetrics: current.metrics }
+        );
 
         // --- RNF03: contexto anonimizado (sem nome, sem CPF, sem patientId real) ---
         const sessionCode = "PAC-" + String(pacient._id).slice(-4).toUpperCase();
@@ -144,7 +181,7 @@ module.exports = async function (context, req) {
             sessionCount: current.sessionCount,
             isFirstReport,
             currentMetrics: current.metrics,
-            previousMetrics: isFirstReport ? null : previous.metrics,
+            previousMetrics,
             initialMetrics: isFirstReport ? null : initialMetrics,
             metricSources: current.metricSources,
             missingOptionalFields,
@@ -152,30 +189,17 @@ module.exports = async function (context, req) {
             alerts: [],
         };
 
-        // --- RF05 / FA03: chamada à API de IA (URL_API_IA) ---
-        // O Container App do report-ai escala pra 0 réplicas quando ocioso, e o
-        // ingress da Azure corta a requisição em ~30s se o container ainda não
-        // acordou — o container continua inicializando em segundo plano, então
-        // uma segunda tentativa logo em seguida normalmente já encontra ele pronto.
-        let iaResponse;
-        const IA_MAX_ATTEMPTS = 3;
-        for (let attempt = 1; attempt <= IA_MAX_ATTEMPTS; attempt++) {
-            try {
-                const apiRes = await axios.post(`${process.env.URL_API_IA}/generate-report`, iaPayload, { timeout: 60000 });
-                iaResponse = apiRes.data;
-                break;
-            } catch (iaErr) {
-                context.log(`[URL_API_IA] - ERROR (tentativa ${attempt}/${IA_MAX_ATTEMPTS}): `, iaErr.message);
-                if (attempt === IA_MAX_ATTEMPTS) {
-                    context.res = {
-                        status: 503,
-                        body: utils.createResponse(false, true, "O serviço de geração de relatório está indisponível. Tente novamente.", null, null),
-                    };
-                    context.done();
-                    return;
-                }
-            }
+        // --- RF05 / FA03: chamada à API de IA (ver requestReportFromAI) ---
+        const iaResult = await requestReportFromAI(axios, iaPayload, context);
+        if (!iaResult.ok) {
+            context.res = {
+                status: 503,
+                body: utils.createResponse(false, true, "O serviço de geração de relatório está indisponível. Tente novamente.", null, null),
+            };
+            context.done();
+            return;
         }
+        const iaResponse = iaResult.data;
 
         // --- RF09/RF10/RN04: avalia critérios configurados (ou o padrão, se nenhum existir) ---
         const alertsTriggered = await evaluateAlerts(pacientId, device, mongoose, context);
@@ -187,8 +211,8 @@ module.exports = async function (context, req) {
             sessionCount: current.sessionCount,
             isFirstReport,
             currentMetrics: current.metrics,
-            previousMetrics: isFirstReport ? null : previous.metrics,
-            initialMetrics: isFirstReport ? current.metrics : initialMetrics,
+            previousMetrics,
+            initialMetrics,
             resumoSessao: iaResponse.resumoSessao,
             evolucao: iaResponse.evolucao,
             avisoRevisao: iaResponse.avisoRevisao,
@@ -204,15 +228,15 @@ module.exports = async function (context, req) {
         // --- RF12: log de auditoria ---
         context.log(`[AUDIT] ClinicalReport ${savedReport._id} gerado para paciente ${pacientId} por usuário ${requestingUser._id} em ${new Date().toISOString()}`);
 
-        for (const alert of alertsTriggered) {
-            await new AlertRecordModel({
-                pacientId,
-                clinicalReportId: savedReport._id,
-                metric: alert.metric,
-                condition: alert.condition,
-                triggerValue: alert.triggerValue,
-            }).save();
-        }
+        // Os registros de alerta são independentes entre si (cada um só
+        // referencia o relatório já salvo), então podem ser gravados em paralelo.
+        await Promise.all(alertsTriggered.map((alert) => new AlertRecordModel({
+            pacientId,
+            clinicalReportId: savedReport._id,
+            metric: alert.metric,
+            condition: alert.condition,
+            triggerValue: alert.triggerValue,
+        }).save()));
 
         context.res = {
             status: 201,

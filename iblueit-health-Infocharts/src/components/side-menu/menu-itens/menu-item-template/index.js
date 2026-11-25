@@ -38,7 +38,7 @@ const MenuItemTemplate = ({ position, openCategoryPosition, setOpenCategoryPosit
             },
           },
         ]}
-        selected={(submenus.findIndex(elem => elem.path === location.pathname) > -1)}
+        selected={submenus.some(elem => elem.path === location.pathname)}
         onClick={handleClick}
       >
         <ListItemIcon sx={{ color: "white", opacity: 0.7, minWidth: 30 }}>

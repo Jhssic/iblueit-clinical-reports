@@ -21,6 +21,9 @@ AVISO_REVISAO = (
     "pelo profissional responsável antes de ser incorporado ao prontuário clínico."
 )
 
+TENDENCIA_MELHORA = "melhora"
+TENDENCIA_REDUCAO = "redução"
+
 METRIC_LABELS = {
     "DJ": ("Desempenho do Jogador", "índice 0–1"),
     "PJ": ("Pontos da Jogada", "pontos"),
@@ -75,9 +78,9 @@ def _trend_word(diff):
     if diff is None:
         return None
     if diff > 0:
-        return "melhora"
+        return TENDENCIA_MELHORA
     if diff < 0:
-        return "redução"
+        return TENDENCIA_REDUCAO
     return "estabilidade"
 
 
@@ -227,29 +230,33 @@ def _check_coherence(resumo, analise, objective_trends, current_metrics=None):
     sentencas = [s.strip() for s in re.split(r"(?<=[.!?])\s+", texto) if s.strip()]
 
     for key, tendencia in objective_trends.items():
-        if tendencia not in ("melhora", "redução"):
-            continue
-        label, _ = METRIC_LABELS[key]
-        padrao_mencao = re.compile(rf"\b{re.escape(key)}\b|{re.escape(label)}", re.IGNORECASE)
-
-        for sentenca in sentencas:
-            if not padrao_mencao.search(sentenca):
-                continue
-            sentenca_lower = sentenca.lower()
-            tem_melhora = any(kw in sentenca_lower for kw in _MELHORA_KEYWORDS)
-            tem_reducao = any(kw in sentenca_lower for kw in _REDUCAO_KEYWORDS)
-
-            contradiz = (tendencia == "melhora" and tem_reducao and not tem_melhora) or (
-                tendencia == "redução" and tem_melhora and not tem_reducao
-            )
-            if contradiz:
-                avisos.append({
-                    "metrica": key,
-                    "esperado": tendencia,
-                    "trechoSuspeito": sentenca,
-                })
+        if tendencia in (TENDENCIA_MELHORA, TENDENCIA_REDUCAO):
+            avisos.extend(_find_trend_contradictions(key, tendencia, sentencas))
 
     return avisos
+
+
+def _sentence_contradicts_trend(sentenca, tendencia):
+    """Indica se a sentença descreve o sentido oposto à tendência real, sem
+    também mencionar o sentido correto (texto ambíguo não gera aviso)."""
+    sentenca_lower = sentenca.lower()
+    tem_melhora = any(kw in sentenca_lower for kw in _MELHORA_KEYWORDS)
+    tem_reducao = any(kw in sentenca_lower for kw in _REDUCAO_KEYWORDS)
+    if tendencia == TENDENCIA_MELHORA:
+        return tem_reducao and not tem_melhora
+    return tem_melhora and not tem_reducao
+
+
+def _find_trend_contradictions(key, tendencia, sentencas):
+    """Avisos para as sentenças que mencionam a métrica (pela sigla ou pelo
+    nome por extenso) e contradizem a tendência esperada."""
+    label, _ = METRIC_LABELS[key]
+    padrao_mencao = re.compile(rf"\b{re.escape(key)}\b|{re.escape(label)}", re.IGNORECASE)
+    return [
+        {"metrica": key, "esperado": tendencia, "trechoSuspeito": sentenca}
+        for sentenca in sentencas
+        if padrao_mencao.search(sentenca) and _sentence_contradicts_trend(sentenca, tendencia)
+    ]
 
 
 def _build_dados_brutos(current_metrics, metric_sources):
@@ -311,6 +318,22 @@ def generate(payload: dict) -> dict:
         # FA02 — campos opcionais que não puderam ser consultados no período.
         "missingOptionalFields": payload.get("missingOptionalFields", []),
     }
+
+
+def _strip_markdown_fence(text: str) -> str:
+    """Remove o bloco markdown (```json ... ```) que alguns modelos colocam em
+    volta do JSON. Feito com operações de string em vez de regex: a regex
+    anterior tinha backtracking super-linear e precedência ambígua (Sonar)."""
+    text = text.strip()
+    if not text.startswith("```"):
+        return text
+    text = text[3:]
+    if text[:4].lower() == "json":
+        text = text[4:]
+    text = text.strip()
+    if text.endswith("```"):
+        text = text[:-3].rstrip()
+    return text
 
 
 def _generate_via_llm(payload: dict, api_key: str) -> dict:
@@ -387,8 +410,7 @@ variáveis DJ, PJ, CGc, FR, PEmax, PImax e EB; ou null se for a primeira sessão
         response_text = response.choices[0].message.content.strip()
         # Alguns modelos embrulham a resposta em um bloco markdown (```json ... ```)
         # mesmo quando instruídos a responder só em JSON — remove o fence antes de parsear.
-        if response_text.startswith("```"):
-            response_text = re.sub(r"^```(?:json)?\s*|\s*```$", "", response_text, flags=re.IGNORECASE)
+        response_text = _strip_markdown_fence(response_text)
         parsed = _json.loads(response_text)
     except Exception:
         return _fallback_template()

@@ -6,3 +6,15 @@
 .inactive {
     opacity : 0.5;
 }
+
+.legend-button {
+    display: flex;
+    align-items: center;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: inherit;
+}

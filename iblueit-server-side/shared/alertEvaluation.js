@@ -71,18 +71,64 @@ function evaluatePercentDrop(sessionsDesc, field, triggerValue) {
             values,
             contamination: Math.min(Math.max(triggerValue, 1), 50) / 100,
         }, { timeout: 10000 });
-        return !!(res.data && res.data.evaluated && res.data.isAnomaly);
+        return !!(res.data?.evaluated && res.data.isAnomaly);
     } catch (err) {
         // Serviço de IA fora do ar ou lento — não derruba a geração do
         // relatório (fail-safe), mas precisa ficar visível em algum lugar,
         // senão um alerta clínico deixa de disparar sem ninguém perceber.
-        const log = (context && context.log) || console.error;
+        const log = context?.log || console.error;
         log(`[ANOMALY_IA] - ERROR: falha ao chamar ${process.env.URL_API_IA}/detect-anomaly — ${err.message}`);
         return false;
     }
   }
 
-  async function evaluateAlerts(pacientId, device, mongoose, context) {
+// Quantas sessões (mais recentes) cada condição precisa para ser avaliada.
+function historyLimitFor(criterion) {
+    switch (criterion.condition) {
+        case 'Deterioração consecutiva':
+            return criterion.triggerValue;
+        case 'Abaixo do valor':
+            return 1;
+        case 'Anomalia (IA)':
+            return ANOMALY_HISTORY_LIMIT;
+        default:
+            return 2;
+    }
+}
+
+async function matchesCriterion(criterion, field, sessionsDesc, context) {
+    switch (criterion.condition) {
+        case 'Deterioração consecutiva':
+            return evaluateConsecutiveDrop(sessionsDesc, field, criterion.triggerValue);
+        case 'Abaixo do valor':
+            return evaluateBelowValue(sessionsDesc, field, criterion.triggerValue);
+        case 'Anomalia (IA)':
+            return evaluateAnomalyIA(sessionsDesc, field, criterion.triggerValue, context);
+        default:
+            return evaluatePercentDrop(sessionsDesc, field, criterion.triggerValue);
+    }
+}
+
+// Avalia um critério; retorna o alerta disparado ou null.
+async function evaluateCriterion(criterion, { pacientId, device, PlataformOverviewModel, context }) {
+    const field = METRIC_FIELD_MAP[criterion.metric];
+    if (!field) return null; // métrica sem série temporal avaliável (ex: FR, CGc)
+
+    const sessionsDesc = await PlataformOverviewModel
+        .find({ pacientId, gameDevice: device })
+        .sort({ playFinish: -1 })
+        .limit(historyLimitFor(criterion));
+
+    const matched = await matchesCriterion(criterion, field, sessionsDesc, context);
+    if (!matched) return null;
+    return {
+        metric: criterion.metric,
+        condition: criterion.condition,
+        triggerValue: criterion.triggerValue,
+    };
+}
+
+async function evaluateAlerts(pacientId, device, mongoose, context) {
     require('./AlertCriteria');
     require('./PlataformOverview');
     const AlertCriteriaModel = mongoose.model('AlertCriteria');
@@ -91,46 +137,12 @@ function evaluatePercentDrop(sessionsDesc, field, triggerValue) {
     let criteria = await AlertCriteriaModel.find({ pacientId, active: true });
     if (!criteria.length) criteria = DEFAULT_CRITERIA;
 
-    const triggered = [];
-
-    for (const criterion of criteria) {
-        const field = METRIC_FIELD_MAP[criterion.metric];
-        if (!field) continue; // métrica sem série temporal avaliável (ex: FR, CGc)
-
-        const limit = criterion.condition === 'Deterioração consecutiva'
-            ? criterion.triggerValue
-            : criterion.condition === 'Abaixo do valor'
-                ? 1
-                : criterion.condition === 'Anomalia (IA)'
-                    ? ANOMALY_HISTORY_LIMIT
-                    : 2;
-
-        const sessionsDesc = await PlataformOverviewModel
-            .find({ pacientId, gameDevice: device })
-            .sort({ playFinish: -1 })
-            .limit(limit);
-
-        let matched;
-        if (criterion.condition === 'Deterioração consecutiva') {
-            matched = evaluateConsecutiveDrop(sessionsDesc, field, criterion.triggerValue);
-        } else if (criterion.condition === 'Abaixo do valor') {
-            matched = evaluateBelowValue(sessionsDesc, field, criterion.triggerValue);
-        } else if (criterion.condition === 'Anomalia (IA)') {
-            matched = await evaluateAnomalyIA(sessionsDesc, field, criterion.triggerValue, context);
-        } else {
-            matched = evaluatePercentDrop(sessionsDesc, field, criterion.triggerValue);
-        }
-
-        if (matched) {
-            triggered.push({
-                metric: criterion.metric,
-                condition: criterion.condition,
-                triggerValue: criterion.triggerValue,
-            });
-        }
-    }
-
-    return triggered;
+    // Critérios são independentes entre si (só leem o histórico do paciente);
+    // Promise.all preserva a ordem, então os alertas saem na mesma ordem dos critérios.
+    const results = await Promise.all(criteria.map((criterion) =>
+        evaluateCriterion(criterion, { pacientId, device, PlataformOverviewModel, context })
+    ));
+    return results.filter(Boolean);
 }
 
 module.exports = {

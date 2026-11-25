@@ -344,7 +344,28 @@ def test_check_coherence_pega_reducao_descrita_como_melhora_pelo_nome_completo()
         None,
         {"FR": "redução"},
     )
-    assert avisos and avisos[0]["esperado"] == "redução"
+    assert avisos
+    assert avisos[0]["esperado"] == "redução"
+
+
+def test_check_coherence_pega_melhora_descrita_como_reducao():
+    avisos = narrative._check_coherence(
+        "O DJ caiu em relação ao período anterior.",
+        None,
+        {"DJ": "melhora"},
+    )
+    assert len(avisos) == 1
+    assert avisos[0]["metrica"] == "DJ"
+    assert avisos[0]["esperado"] == "melhora"
+    assert avisos[0]["trechoSuspeito"] == "O DJ caiu em relação ao período anterior."
+
+
+def test_sentence_contradicts_trend_ignora_texto_ambiguo_ou_coerente():
+    assert narrative._sentence_contradicts_trend("O PEF caiu.", "melhora") is True
+    assert narrative._sentence_contradicts_trend("O PEF caiu e depois aumentou.", "melhora") is False
+    assert narrative._sentence_contradicts_trend("O PEF aumentou.", "melhora") is False
+    assert narrative._sentence_contradicts_trend("O PEF aumentou.", "redução") is True
+    assert narrative._sentence_contradicts_trend("O PEF caiu.", "redução") is False
 
 
 def test_build_dados_brutos_ignora_sigla_desconhecida_e_nulos():
@@ -439,3 +460,12 @@ def test_generate_via_llm_json_sem_resumo_cai_pro_template(monkeypatch):
     result = narrative._generate_via_llm(_PAYLOAD_LLM, api_key="fake-key")
     assert result["generatedBy"] == "template"
     assert result["coerenciaVerificada"] is True
+
+
+def test_strip_markdown_fence_casos():
+    assert narrative._strip_markdown_fence('{"a": 1}') == '{"a": 1}'
+    assert narrative._strip_markdown_fence('```json\n{"a": 1}\n```') == '{"a": 1}'
+    assert narrative._strip_markdown_fence('```JSON {"a": 1} ```') == '{"a": 1}'
+    assert narrative._strip_markdown_fence('```\n{"a": 1}\n```') == '{"a": 1}'
+    # Fence aberta sem fechamento: remove só a abertura.
+    assert narrative._strip_markdown_fence('```json\n{"a": 1}') == '{"a": 1}'

@@ -1,4 +1,4 @@
-module.exports = async function (context, req) {
+module.exports = async function deleteClinicalReport(context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
     if (mongoose.connection.readyState === 0) {

@@ -1,5 +1,5 @@
 const saveAuthenticationData = (dataOfRequest) => {
-  const dataToSave = (dataOfRequest.data && dataOfRequest.data.data)
+  const dataToSave = dataOfRequest.data?.data
     ? JSON.stringify(dataOfRequest.data.data)
     : '';
   sessionStorage.setItem('userCredentials', dataToSave);
@@ -19,7 +19,7 @@ const isAuthenticated = () => {
 const validateUserCredentials = (userCredentials) => {
   const keysNeeded = ['fullname', 'gameToken', 'userId', 'authExpirationTime', 'authTime'];
   const keys = Object.keys(userCredentials);
-  return keysNeeded.every(elem => keys.indexOf(elem) >= 0);
+  return keysNeeded.every(elem => keys.includes(elem));
 }
 
 const getTokenParameters = (Parameter = null) => {

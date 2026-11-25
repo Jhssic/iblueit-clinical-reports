@@ -6,8 +6,8 @@ import Stack from '@mui/material/Stack';
 
 
 export const extractMessage = (result, displayMessage) => {
-  const messageErro = (result && result.response && result.response.data && result.response.data.message);
-  const message = (result && result.data && result.data.message);
+  const messageErro = result?.response?.data?.message;
+  const message = result?.data?.message;
 
   if (!messageErro && !message) {
     return 'Impossível fazer conexão com o servidor por favor tente novamente mais tarde';
@@ -26,7 +26,7 @@ const Notification = () => {
 
   for (const key in notificationList) {
     if (Object.keys(notificationList[key]).length) {
-      notification.push(notificationList[key]);
+      notification.push({ ...notificationList[key], id: key });
     }
   }
 
@@ -44,15 +44,15 @@ const Notification = () => {
         justifyContent: 'flex-end',
       }}>
         <Stack sx={{ display: { xs: "block", md: "none" }, width: '100%' }} spacing={1}>
-          {notification.map((elem, index) => (
-            <Alert key={index} variant="filled" severity={elem.type}>
+          {notification.map((elem) => (
+            <Alert key={elem.id} variant="filled" severity={elem.type}>
               {elem.message}
             </Alert>
           ))}
         </Stack>
         <Stack sx={{ display: { xs: "none", md: "block" }, position: 'fixed', width: '30%' }} spacing={1}>
-          {notification.map((elem, index) => (
-            <Alert key={index} variant="filled" severity={elem.type}>
+          {notification.map((elem) => (
+            <Alert key={elem.id} variant="filled" severity={elem.type}>
               {elem.message}
             </Alert>
           ))}

@@ -53,7 +53,9 @@ const LoginPage = () => {
     try {
       await postAuthentication(context, user, password);
       if (isAuthenticated()) navigate(pathRoutes.INFORMATION_PANEL)
-    } catch (error) { }
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   return (

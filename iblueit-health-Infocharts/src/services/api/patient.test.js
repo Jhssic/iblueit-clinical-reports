@@ -37,7 +37,7 @@ describe("fetchAll (lista de pacientes)", () => {
     const context = buildContext();
     axios.get.mockRejectedValue({ response: { data: { message: "Token inválido" } } });
 
-    await expect(fetchAll(context)).rejects.toBe("erro");
+    await expect(fetchAll(context)).rejects.toEqual(new Error("erro"));
     expect(context.addNotification).toHaveBeenCalledWith("error", "Token inválido");
     expect(context.setLoading).toHaveBeenLastCalledWith(false);
   });

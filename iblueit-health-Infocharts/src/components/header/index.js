@@ -38,7 +38,7 @@ const Header = ({ offset, handleMenuButton }) => {
           to={pathRoutes.INFORMATION_PANEL}
           sx={{ color: '#11192A', textDecoration: 'none' }}
         >
-          I Blue It
+          {'I Blue It'}
           <img
             alt='Logo'
             src={logo}
