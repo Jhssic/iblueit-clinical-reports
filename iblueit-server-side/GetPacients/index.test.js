@@ -56,6 +56,22 @@ describe('GetPacients', () => {
         expect(context.done).toHaveBeenCalledTimes(1);
     });
 
+    test('RF09: devolve o status do último relatório (calculado quando o relatório é antigo e não tem)', async () => {
+        agg = aggregate([
+            { _id: 'p1', name: 'Ana', latestReport: { status: 'atencao', alerts: [] } },
+            { _id: 'p2', name: 'Bia', latestReport: { alerts: [{ metric: 'DJ' }] } },
+            { _id: 'p3', name: 'Caio' },
+        ]);
+        PacientModel.aggregate.mockReturnValue(agg);
+
+        const context = await run();
+
+        const [ana, bia, caio] = context.res.body.data;
+        expect(ana.latestReport.status).toBe('atencao');
+        expect(bia.latestReport.status).toBe('critico');
+        expect(caio.latestReport).toBeUndefined();
+    });
+
     test('aplica filtros de nome, condição, sexo, ordenação e paginação', async () => {
         await run({ name: 'An', condition: 'Healthy', sex: 'Female', sort: 'asc', limit: '10', skip: '20' });
 

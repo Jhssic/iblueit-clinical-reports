@@ -12,6 +12,7 @@ module.exports = async function getClinicalReports(context, req) {
     const ClinicalReportModel = mongoose.model('ClinicalReport');
 
     const utils = require('../shared/utils');
+    const { withPatientStatus } = require('../shared/patientStatus');
 
     const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
     if (!isVerifiedGameToken) {
@@ -48,7 +49,7 @@ module.exports = async function getClinicalReports(context, req) {
 
     try {
         // RF11: histórico completo, mais recente primeiro
-        const reports = await ClinicalReportModel.find(filter).sort({ created_at: -1 });
+        const reports = (await ClinicalReportModel.find(filter).sort({ created_at: -1 })).map(withPatientStatus);
         context.res = {
             status: 200,
             body: utils.createResponse(true, true, "Consulta realizada com sucesso.", reports, null),

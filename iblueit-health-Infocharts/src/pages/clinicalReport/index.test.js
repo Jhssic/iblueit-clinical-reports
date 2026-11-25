@@ -53,6 +53,7 @@ const relatorioCompleto = (extra = {}) => ({
   device: "Pitaco",
   created_at: "2024-03-04T10:00:00.000Z",
   generatedBy: "llm",
+  status: "critico",
   alerts: [
     { metric: "DJ", condition: "Deterioração consecutiva", triggerValue: 3 },
     { metric: "PJ", condition: "Queda percentual >", triggerValue: 20 },
@@ -82,6 +83,7 @@ const relatorioSimples = (extra = {}) => ({
   device: "Cinta",
   created_at: "2024-02-08T10:00:00.000Z",
   generatedBy: "template",
+  status: "estavel",
   alerts: [],
   currentMetrics: { DJ: 0.9 },
   resumoSessao: "x".repeat(150),
@@ -225,9 +227,9 @@ describe("<ClinicalReport /> — aba Relatório atual", () => {
     expect(screen.getByText("Revise antes de usar.")).toBeInTheDocument();
   });
 
-  it("exibe status 'Atenção' quando o DJ cai 10% ou mais sem alerta formal", async () => {
+  it("exibe o status 'Atenção' calculado pelo back-end", async () => {
     api.fetchClinicalReportsHistory.mockResolvedValue([
-      relatorioSimples({ currentMetrics: { DJ: 0.85 }, previousMetrics: { DJ: 1 } }),
+      relatorioSimples({ status: "atencao", currentMetrics: { DJ: 0.85 }, previousMetrics: { DJ: 1 } }),
     ]);
     renderizar();
     expect(await screen.findByText("Atenção")).toBeInTheDocument();
@@ -627,9 +629,9 @@ describe("<ClinicalReport /> — aba Pacientes (RF09)", () => {
 
   it("lista pacientes com status e seleciona um paciente", async () => {
     fetchAll.mockResolvedValue([
-      { id: "paciente-1", name: "Maria", condition: "DPOC", latestReport: { alerts: [{ metric: "DJ" }] } },
+      { id: "paciente-1", name: "Maria", condition: "DPOC", latestReport: { status: "critico", alerts: [{ metric: "DJ" }] } },
       { id: "p2", name: "João", condition: null, latestReport: null, birthDate: "1980-05-05" },
-      { id: "p3", name: "Ana", condition: "Asma", latestReport: { alerts: [], currentMetrics: { DJ: 1 }, previousMetrics: { DJ: 1 } } },
+      { id: "p3", name: "Ana", condition: "Asma", latestReport: { status: "estavel", alerts: [], currentMetrics: { DJ: 1 }, previousMetrics: { DJ: 1 } } },
     ]);
     const { context } = renderizar();
     await screen.findByText("Nenhum relatório gerado ainda para este paciente.");
