@@ -530,7 +530,7 @@ def _strip_markdown_fence(text: str) -> str:
     return text
 
 
-,def _build_llm_prompt(payload: dict) -> str:
+def _build_llm_prompt(payload: dict) -> str:
     """Monta o prompt clínico enviado ao LLM a partir do payload do relatório."""
     device = payload.get("device", "Pitaco")
     period = payload.get("period") or {}
