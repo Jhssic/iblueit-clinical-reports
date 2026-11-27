@@ -9,6 +9,7 @@ module.exports = async function getPacients(context, req) {
     const PacientModel = mongoose.model('Pacient');
 
     const utils = require('../shared/utils');
+    const { withPatientStatus } = require('../shared/patientStatus');
 
     const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
 
@@ -96,8 +97,8 @@ module.exports = async function getPacients(context, req) {
     });
 
     // RF09: indicador de status (Estável/Atenção/Crítico) por paciente, com
-    // base no relatório clínico (não arquivado) mais recente — mesmos dados
-    // que alimentam o getPatientStatus() da tela de Relatório Clínico.
+    // base no relatório clínico (não arquivado) mais recente. O status vem do
+    // próprio relatório (shared/patientStatus.js); o front só exibe.
     aggregate.append({
         $lookup: {
             from: 'clinicalreports',
@@ -115,7 +116,7 @@ module.exports = async function getPacients(context, req) {
                 },
                 { $sort: { created_at: -1 } },
                 { $limit: 1 },
-                { $project: { alerts: 1, currentMetrics: 1, previousMetrics: 1 } },
+                { $project: { status: 1, alerts: 1, currentMetrics: 1, previousMetrics: 1 } },
             ],
             as: 'latestClinicalReport'
         }
@@ -134,7 +135,9 @@ module.exports = async function getPacients(context, req) {
 
     try {
 
-        const pacients = await aggregate.exec();
+        const pacients = (await aggregate.exec()).map((pacient) => (
+            pacient.latestReport ? { ...pacient, latestReport: withPatientStatus(pacient.latestReport) } : pacient
+        ));
         context.log("[DB QUERYING] - Pacient Get");
         context.res = {
             status: 200,

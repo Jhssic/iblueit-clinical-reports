@@ -158,29 +158,16 @@ const describeAlert = (a) => {
 };
 
 // ─── Indicador rápido de status do paciente (Estável/Atenção/Crítico) ────────
-// Crítico: algum critério de alerta configurado foi atingido (RF09/RN04).
-// Atenção: sem alerta formal disparado, mas o DJ já caiu mais de 10% em
-// relação ao período anterior — um aviso antecipado antes de virar alerta.
-// Estável: sem alerta e sem queda relevante (ou é a primeira sessão, sem
-// período anterior pra comparar).
+// A regra que decide o status é do back-end (iblueit-server-side/shared/
+// patientStatus.js): o relatório já chega com `status` = critico | atencao |
+// estavel. Aqui só se traduz esse código em rótulo e cores (tela e PDF).
 const PATIENT_STATUS = {
-  critico: { label: "Crítico", color: "#c62828", bg: "#fdecea", border: "#c62828" },
-  atencao: { label: "Atenção", color: "#e65100", bg: "#fff3e0", border: "#e65100" },
-  estavel: { label: "Estável", color: "#2e7d32", bg: "#e8f5e9", border: "#2e7d32" },
+  critico: { label: "Crítico", color: "#c62828", bg: "#fdecea", border: "#c62828", pdfRgb: [198, 40, 40] },
+  atencao: { label: "Atenção", color: "#e65100", bg: "#fff3e0", border: "#e65100", pdfRgb: [230, 81, 0] },
+  estavel: { label: "Estável", color: "#2e7d32", bg: "#e8f5e9", border: "#2e7d32", pdfRgb: [46, 125, 50] },
 };
 
-const getPatientStatus = (report) => {
-  if (!report) return null;
-  if (report.alerts && report.alerts.length > 0) return PATIENT_STATUS.critico;
-
-  const dj = report.currentMetrics?.DJ;
-  const prevDj = report.previousMetrics?.DJ;
-  if (dj != null && prevDj != null && prevDj !== 0) {
-    const pctChange = ((dj - prevDj) / prevDj) * 100;
-    if (pctChange <= -10) return PATIENT_STATUS.atencao;
-  }
-  return PATIENT_STATUS.estavel;
-};
+const getPatientStatus = (report) => PATIENT_STATUS[report?.status] ?? null;
 
 // ─── RF08 — montagem do PDF nativo do relatório clínico ──────────────────────
 // Layout próprio (texto real, não captura de tela): título, dados do paciente,
@@ -288,17 +275,11 @@ const pdfAddNoteBox = (doc, { title, lines, bg, border, text }, y, pageWidth, pa
 const describeGeneratedBy = (report) =>
   report.generatedBy === "llm" ? "texto via LLM" : "texto via template";
 
-const PDF_STATUS_COLORS = {
-  "Crítico": [198, 40, 40],
-  "Atenção": [230, 81, 0],
-  "Estável": [46, 125, 50],
-};
-
 // Status rápido do paciente (Estável/Atenção/Crítico), alinhado à direita
 const pdfAddStatusBadge = (doc, report, y, pageWidth) => {
   const patientStatus = getPatientStatus(report);
   if (!patientStatus) return;
-  const statusRgb = PDF_STATUS_COLORS[patientStatus.label] || [117, 117, 117];
+  const statusRgb = patientStatus.pdfRgb;
   doc.setFontSize(10);
   doc.setFont(undefined, "bold");
   const statusTextWidth = doc.getTextWidth(patientStatus.label) + 16;

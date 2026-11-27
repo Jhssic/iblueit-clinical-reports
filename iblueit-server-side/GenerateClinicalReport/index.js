@@ -73,6 +73,7 @@ module.exports = async function generateClinicalReport(context, req) {
     const validations = require('../shared/Validators');
     const clinicalMetrics = require('../shared/clinicalMetrics');
     const { evaluateAlerts } = require('../shared/alertEvaluation');
+    const { computePatientStatus } = require('../shared/patientStatus');
 
     // --- Autenticação (gameToken) ---
     const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
@@ -203,6 +204,7 @@ module.exports = async function generateClinicalReport(context, req) {
 
         // --- RF09/RF10/RN04: avalia critérios configurados (ou o padrão, se nenhum existir) ---
         const alertsTriggered = await evaluateAlerts(pacientId, device, mongoose, context);
+        const status = computePatientStatus({ alerts: alertsTriggered, currentMetrics: current.metrics, previousMetrics });
 
         const savedReport = await new ClinicalReportModel({
             pacientId,
@@ -222,6 +224,7 @@ module.exports = async function generateClinicalReport(context, req) {
             avisosCoerencia: iaResponse.avisosCoerencia,
             missingOptionalFields,
             alerts: alertsTriggered,
+            status,
             generatedByUserId: String(requestingUser._id),
         }).save();
 
