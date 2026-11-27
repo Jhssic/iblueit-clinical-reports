@@ -1000,7 +1000,7 @@ const ClinicalReport = () => {
   };
 
   const handleSaveCriteria = async () => {
-    const invalid = criteria.map(validateCriterion).find(Boolean);
+    const invalid = criteria.map((c, idx) => validateCriterion(c, idx)).find(Boolean);
     if (invalid) {
       context.addNotification("error", invalid);
       return;
