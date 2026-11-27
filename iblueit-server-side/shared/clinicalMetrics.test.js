@@ -24,7 +24,11 @@ describe('extractMetricsForPeriod', () => {
             {
                 scoreRatio: 0.5, score: 100, BorgScale: 2,
                 flowDataDevicesId: {
-                    flowDataDevices: [{ flowData: [{ flowValue: -10 }, { flowValue: 30 }] }],
+                    flowDataDevices: [
+                        { deviceName: 'Manovacuômetro', flowData: [{ flowValue: -10 }, { flowValue: 30 }] },
+                        // outro dispositivo na mesma sessão: não entra em FLi/FLe
+                        { deviceName: 'Pitaco', flowData: [{ flowValue: -500 }, { flowValue: 900 }] },
+                    ],
                 },
             },
             { scoreRatio: 0.7, score: null, BorgScale: 4, flowDataDevicesId: null },
@@ -39,7 +43,9 @@ describe('extractMetricsForPeriod', () => {
             { pacientId: 'pac-1', device: 'Manovacuômetro', start, end }, mongoose
         );
 
-        expect(PlataformOverviewModel.find).toHaveBeenCalledWith({ pacientId: 'pac-1', playFinish: { $gte: start, $lte: end } });
+        expect(PlataformOverviewModel.find).toHaveBeenCalledWith({
+            pacientId: 'pac-1', gameDevice: 'Manovacuômetro', playFinish: { $gte: start, $lte: end },
+        });
         expect(sessionsQuery.populate).toHaveBeenCalledWith('flowDataDevicesId');
         expect(GameParameterModel.find).toHaveBeenCalledWith({ pacientId: 'pac-1', created_at: { $gte: start, $lte: end } });
         expect(PacientModel.findById).toHaveBeenCalledWith('pac-1');
@@ -65,6 +71,42 @@ describe('extractMetricsForPeriod', () => {
 
         expect(result.sessionCount).toBe(0);
         Object.values(result.metrics).forEach((v) => expect(v).toBeNull());
+    });
+});
+
+describe('extractMetricsForPeriod — período anterior e volume de dados', () => {
+    test('endExclusive usa $lt no fim (período anterior não conta a sessão do limite)', async () => {
+        PlataformOverviewModel.find.mockReturnValue(query([]));
+        GameParameterModel.find.mockResolvedValue([]);
+        PacientModel.findById.mockResolvedValue(null);
+
+        await clinicalMetrics.extractMetricsForPeriod(
+            { pacientId: 'pac-1', device: 'Pitaco', start, end, endExclusive: true }, mongoose
+        );
+
+        expect(PlataformOverviewModel.find.mock.calls[0][0].playFinish).toEqual({ $gte: start, $lt: end });
+        expect(GameParameterModel.find.mock.calls[0][0].created_at).toEqual({ $gte: start, $lt: end });
+    });
+
+    test('FLi/FLe com centenas de milhares de amostras não estoura a pilha', async () => {
+        const flowData = Array.from({ length: 300000 }, (_, i) => ({ flowValue: (i % 1000) - 400 }));
+        PlataformOverviewModel.find.mockReturnValue(query([
+            { flowDataDevicesId: { flowDataDevices: [{ deviceName: 'Pitaco', flowData }] } },
+        ]));
+        GameParameterModel.find.mockResolvedValue([]);
+        PacientModel.findById.mockResolvedValue(null);
+
+        const result = await clinicalMetrics.extractMetricsForPeriod(
+            { pacientId: 'pac-1', device: 'Pitaco', start, end }, mongoose
+        );
+
+        expect(result.metrics.FLi).toBe(-400);
+        expect(result.metrics.FLe).toBe(599);
+    });
+
+    test('minMax devolve nulos sem valores', () => {
+        expect(clinicalMetrics.minMax([])).toEqual({ min: null, max: null });
+        expect(clinicalMetrics.minMax([3, -1, 2])).toEqual({ min: -1, max: 3 });
     });
 });
 

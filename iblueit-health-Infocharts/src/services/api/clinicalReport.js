@@ -66,21 +66,43 @@ export const PERIOD_PRESETS = [
   { key: "mes", label: "Último mês", days: 30 },
 ];
 
+// Rótulo com ano (DD/MM/YYYY) — sem o ano, relatórios de anos diferentes ficam
+// indistinguíveis no histórico/PDF.
+const PERIOD_LABEL_FORMAT = "DD/MM/YYYY";
+const formatPeriodLabel = (start, end) =>
+  start.format(PERIOD_LABEL_FORMAT) + " – " + end.format(PERIOD_LABEL_FORMAT);
+
+// Intervalo de um preset: exatamente N dias contando hoje (hoje + N-1 dias
+// anteriores), do início do primeiro dia ao fim de hoje. Usado tanto na
+// geração do relatório quanto no filtro de período dos gráficos, para que
+// "Última semana" signifique a mesma coisa nos dois lugares.
+export const getPresetRange = (presetKey, now = moment()) => {
+  const preset = PERIOD_PRESETS.find((p) => p.key === presetKey) || PERIOD_PRESETS[0];
+  return {
+    start: moment(now).subtract(preset.days - 1, "days").startOf("day"),
+    end: moment(now).endOf("day"),
+  };
+};
+
+// Período personalizado só é válido com as duas datas e início <= fim.
+export const isValidCustomPeriod = (customStart, customEnd) =>
+  Boolean(customStart && customEnd) && !moment(customStart).isAfter(moment(customEnd), "day");
+
 export const buildPeriodFromPreset = (presetKey, customStart, customEnd) => {
   if (presetKey === "personalizado") {
+    const start = moment(customStart).startOf("day");
+    const end = moment(customEnd).endOf("day");
     return {
-      start: moment(customStart).startOf("day").toISOString(),
-      end: moment(customEnd).endOf("day").toISOString(),
-      label: moment(customStart).format("DD/MM") + " – " + moment(customEnd).format("DD/MM"),
+      start: start.toISOString(),
+      end: end.toISOString(),
+      label: formatPeriodLabel(start, end),
     };
   }
-  const preset = PERIOD_PRESETS.find((p) => p.key === presetKey) || PERIOD_PRESETS[0];
-  const end = moment().endOf("day");
-  const start = moment().subtract(preset.days, "days").startOf("day");
+  const { start, end } = getPresetRange(presetKey);
   return {
     start: start.toISOString(),
     end: end.toISOString(),
-    label: start.format("DD/MM") + " – " + end.format("DD/MM"),
+    label: formatPeriodLabel(start, end),
   };
 };
 
@@ -90,9 +112,11 @@ export const buildPeriodFromPreset = (presetKey, customStart, customEnd) => {
 // vale aqui. FR não tem série temporal por sessão no modelo atual (é um valor de
 // calibração fixo do paciente) — é exibido como referência, não como linha por sessão.
 
+// O endpoint de estatísticas lê o filtro de dispositivo do parâmetro `devices`
+// (nome exato do dispositivo); `gameDevice` era ignorado e sempre vinha Pitaco.
 export const fetchPlataformSeries = async (patientId, device) => {
   const response = await axios.get(
-    `${BaseUrl()}/pacients/${patientId}/plataforms/statistics?sort=asc&gameDevice=${device}`,
+    `${BaseUrl()}/pacients/${patientId}/plataforms/statistics?sort=asc&devices=${encodeURIComponent(device)}`,
     { headers: headers() }
   );
   return (response.data.data || []).map((s) => ({

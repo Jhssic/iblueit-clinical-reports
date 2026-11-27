@@ -27,7 +27,7 @@ const contextComHistorico = () => {
 };
 
 const param = (overrides) => ({
-    stageId: 1, phase: 2, pacientId: 'viz-1', ObjectSpeedFactor: 1, HeightIncrement: 0.1, HeightUpThreshold: 0.8,
+    stageId: 1, phase: 2, level: 1, pacientId: 'viz-1', ObjectSpeedFactor: 1, HeightIncrement: 0.1, HeightUpThreshold: 0.8,
     HeightDownThreshold: 0.2, SizeIncrement: 0.1, SizeUpThreshold: 0.8, SizeDownThreshold: 0.2, Loops: 2,
     ...overrides,
 });
@@ -52,8 +52,8 @@ describe('GetGameParameterNeighborInformation', () => {
             data: { neighborsPacientReturn: [{ pacientId: 'viz-1', pacientName: 'Ana' }, { pacientId: 'viz-2', pacientName: 'Bia' }] },
         });
         GameParameterModel.find.mockResolvedValue([
-            param({ pacientId: 'viz-1', stageId: 1, phase: 2, ObjectSpeedFactor: 1, Loops: 2 }),
-            param({ pacientId: 'viz-2', stageId: 3, phase: 4, ObjectSpeedFactor: 2, Loops: 3, SizeIncrement: null }),
+            param({ pacientId: 'viz-1', stageId: 1, phase: 2, level: 5, ObjectSpeedFactor: 1, Loops: 2 }),
+            param({ pacientId: 'viz-2', stageId: 3, phase: 4, level: 7, ObjectSpeedFactor: 2, Loops: 3, SizeIncrement: null }),
         ]);
         const context = contextComHistorico();
 
@@ -66,38 +66,37 @@ describe('GetGameParameterNeighborInformation', () => {
 
         expect(context.res.status).toBe(200);
         const [ana, bia, media] = context.res.body.data;
-        expect(ana).toMatchObject({ pacientName: 'Ana', stageId: 1, phase: 2, level: 2, isAVG: false });
+        // level vem do próprio campo level (antes copiava phase por engano)
+        expect(ana).toMatchObject({ pacientName: 'Ana', stageId: 1, phase: 2, level: 5, isAVG: false });
         expect(bia).toMatchObject({ pacientName: 'Bia', SizeIncrement: 0, isAVG: false });
         expect(media).toMatchObject({
-            pacientId: null, isAVG: true, stageId: 2, phase: 3, level: 3, ObjectSpeedFactor: 1.5, Loops: 2, SizeIncrement: 0.05,
+            pacientId: null, isAVG: true, stageId: 2, phase: 3, level: 6, ObjectSpeedFactor: 1.5, Loops: 2, SizeIncrement: 0.05,
         });
         expect(context.respostas).toHaveLength(1);
     });
 
-    test('sem vizinhos: a primeira resposta enviada informa que não foram encontrados', async () => {
+    test('sem vizinhos: responde 200 com lista vazia, uma única vez, sem consultar o banco', async () => {
         axios.mockResolvedValue({ data: { neighborsPacientReturn: [] } });
-        GameParameterModel.find.mockResolvedValue([]);
         const context = contextComHistorico();
 
         await handler(context, createReq({ query: { pacientId: 'pac-1' } }));
 
-        expect(context.respostas[0].status).toBe(200);
-        expect(context.respostas[0].body.message).toBe('Não Foi encontrados Vizinhos');
+        expect(context.respostas).toHaveLength(1);
+        expect(context.res.status).toBe(200);
+        expect(context.res.body.success).toBe(true);
+        expect(context.res.body.data).toEqual([]);
+        expect(GameParameterModel.find).not.toHaveBeenCalled();
     });
 
-    test('falha na API de IA: a primeira resposta enviada é 400 "Erro na Requisição"', async () => {
+    test('falha na API de IA: responde 502 uma única vez, sem estourar erro', async () => {
         axios.mockRejectedValue(new Error('IA fora do ar'));
-        const log = jest.spyOn(console, 'log').mockImplementation(() => {});
         const context = contextComHistorico();
 
-        // Depois de responder 400 o handler ainda tenta seguir com a lista de
-        // vizinhos indefinida e lança TypeError (bug conhecido, ver relatório) —
-        // aqui só validamos a resposta que já foi enviada ao cliente.
-        await handler(context, createReq({ query: { pacientId: 'pac-1' } })).catch(() => {});
+        await handler(context, createReq({ query: { pacientId: 'pac-1' } }));
 
-        expect(context.respostas[0].status).toBe(400);
-        expect(context.respostas[0].body.message).toBe('Erro na Requisição');
+        expect(context.respostas).toHaveLength(1);
+        expect(context.res.status).toBe(502);
+        expect(context.res.body.success).toBe(false);
         expect(GameParameterModel.find).not.toHaveBeenCalled();
-        log.mockRestore();
     });
 });

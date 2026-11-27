@@ -79,4 +79,30 @@ describe('Validators', () => {
         expect(result.errors.errors).toHaveProperty(['criteria.0.condition']);
         expect(result.errors.errors).toHaveProperty(['criteria.0.triggerValue']);
     });
+
+    test('saveAlertCriteriaValidator exige criteria e valida triggerValue conforme a condição', () => {
+        const check = (condition, triggerValue) => validators.saveAlertCriteriaValidator(
+            { criteria: [{ metric: 'DJ', condition, triggerValue }] }
+        );
+        expect(validators.saveAlertCriteriaValidator({}).errors.errors).toHaveProperty('criteria');
+
+        // consecutiva: inteiro >= 2
+        expect(check('Deterioração consecutiva', 2).errorCount).toBe(0);
+        expect(check('Deterioração consecutiva', 6).errorCount).toBe(0);
+        [0, 1, 2.5].forEach((v) => {
+            const r = check('Deterioração consecutiva', v);
+            expect(r.errorCount).toBe(1);
+            expect(r.errors.errors['criteria.0.triggerValue'][0]).toMatch(/inteiro/);
+        });
+        // percentual e sensibilidade: 1..100
+        ['Queda percentual >', 'Anomalia (IA)'].forEach((c) => {
+            expect(check(c, 1).errorCount).toBe(0);
+            expect(check(c, 100).errorCount).toBe(0);
+            expect(check(c, 0).errorCount).toBe(1);
+            expect(check(c, 150).errorCount).toBe(1);
+        });
+        // abaixo do valor: qualquer número
+        expect(check('Abaixo do valor', 0.3).errorCount).toBe(0);
+        expect(check('Abaixo do valor', -5).errorCount).toBe(0);
+    });
 });

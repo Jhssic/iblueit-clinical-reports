@@ -11,12 +11,11 @@ module.exports = async function getAlertCriteria(context, req) {
 
     const utils = require('../shared/utils');
 
-    const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
-    if (!isVerifiedGameToken) {
-        context.res = { status: 403, body: utils.createResponse(false, false, "Chave de acesso inválida.", null, 1) };
-        context.done();
-        return;
-    }
+    // RN01: critérios de alerta são dado clínico — mesma regra dos relatórios.
+    const requestingUser = await utils.requireClinicalStaff(
+        context, req, mongoose, "Apenas profissionais autenticados podem consultar alertas."
+    );
+    if (!requestingUser) return;
 
     const pacientId = req.params.pacientId;
     if (!pacientId) {

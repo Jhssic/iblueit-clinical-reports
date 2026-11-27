@@ -98,10 +98,10 @@ describe('GenerateClinicalReport', () => {
         expect(context.res.status).toBe(404);
     });
 
-    test('FA01: sem sessões no período informa dados insuficientes e não chama a IA', async () => {
+    test('FA01: sem sessões no período responde 422 com os dados ausentes e não chama a IA', async () => {
         jest.spyOn(clinicalMetrics, 'extractMetricsForPeriod').mockResolvedValue({ sessionCount: 0, metrics: {} });
         const context = await run();
-        expect(context.res.status).toBe(200);
+        expect(context.res.status).toBe(422);
         expect(context.res.body.success).toBe(false);
         expect(context.res.body.data).toEqual({ sufficientData: false, missing: ['nenhuma sessão registrada no período selecionado'] });
         expect(axios.post).not.toHaveBeenCalled();
@@ -127,7 +127,8 @@ describe('GenerateClinicalReport', () => {
 
         expect(extract).toHaveBeenCalledTimes(1);
         expect(extract.mock.calls[0][0]).toMatchObject({ pacientId: PACIENT_ID, device: 'Pitaco' });
-        expect(models.ClinicalReport.countDocuments).toHaveBeenCalledWith({ pacientId: PACIENT_ID, archived: false });
+        // RN06 por dispositivo — mesmo filtro de findInitialMetrics
+        expect(models.ClinicalReport.countDocuments).toHaveBeenCalledWith({ pacientId: PACIENT_ID, device: 'Pitaco', archived: false });
         expect(models.ClinicalReport.findOne).not.toHaveBeenCalled();
 
         const [url, payload, options] = axios.post.mock.calls[0];
@@ -142,7 +143,10 @@ describe('GenerateClinicalReport', () => {
         expect(JSON.stringify(payload)).not.toContain('Nome Real');
         expect(JSON.stringify(payload)).not.toContain(PACIENT_ID);
 
-        expect(evaluate).toHaveBeenCalledWith(PACIENT_ID, 'Pitaco', mongoose, context);
+        // RF09: alertas avaliados ANTES da IA, só até o fim do período, e enviados no payload
+        expect(evaluate).toHaveBeenCalledWith(PACIENT_ID, 'Pitaco', mongoose, context, new Date('2024-03-01'));
+        expect(evaluate.mock.invocationCallOrder[0]).toBeLessThan(axios.post.mock.invocationCallOrder[0]);
+        expect(payload.alerts).toEqual([alerta]);
 
         const [relatorio] = models.ClinicalReport.instances;
         expect(relatorio).toMatchObject({
@@ -181,6 +185,9 @@ describe('GenerateClinicalReport', () => {
         // período anterior com a mesma duração, terminando no início do atual
         const prev = extract.mock.calls[1][0];
         expect(prev.end).toEqual(new Date('2024-02-01'));
+        // fim exclusivo: sessão exatamente no limite não conta nos dois períodos
+        expect(prev.endExclusive).toBe(true);
+        expect(extract.mock.calls[0][0].endExclusive).toBeUndefined();
         expect(prev.start.getTime()).toBe(new Date('2024-02-01').getTime() - (new Date('2024-03-01') - new Date('2024-02-01')));
 
         expect(models.ClinicalReport.findOne).toHaveBeenCalledWith({ pacientId: PACIENT_ID, device: 'Pitaco', archived: false });
@@ -226,7 +233,7 @@ describe('GenerateClinicalReport', () => {
 
     test('FA03: responde 503 depois de 3 falhas da IA e não salva nada', async () => {
         jest.spyOn(clinicalMetrics, 'extractMetricsForPeriod').mockResolvedValue(metricasCompletas);
-        const evaluate = jest.spyOn(alertEvaluation, 'evaluateAlerts');
+        jest.spyOn(alertEvaluation, 'evaluateAlerts').mockResolvedValue([{ metric: 'DJ', condition: 'Abaixo do valor', triggerValue: 1 }]);
         models.ClinicalReport.countDocuments.mockResolvedValue(0);
         axios.post.mockRejectedValue(new Error('indisponível'));
 
@@ -234,8 +241,8 @@ describe('GenerateClinicalReport', () => {
 
         expect(axios.post).toHaveBeenCalledTimes(3);
         expect(context.res.status).toBe(503);
-        expect(evaluate).not.toHaveBeenCalled();
         expect(models.ClinicalReport.instances).toHaveLength(0);
+        expect(models.AlertRecord.instances).toHaveLength(0);
         expect(context.done).toHaveBeenCalledTimes(1);
     });
 

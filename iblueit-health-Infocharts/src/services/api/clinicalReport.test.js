@@ -8,6 +8,8 @@ import {
   fetchPacientProfile,
   PERIOD_PRESETS,
   buildPeriodFromPreset,
+  getPresetRange,
+  isValidCustomPeriod,
   fetchPlataformSeries,
   fetchGameParameterSeries,
   fetchAlertCriteria,
@@ -86,23 +88,46 @@ describe("services/api/clinicalReport", () => {
       expect(PERIOD_PRESETS.map((p) => p.key)).toEqual(["semana", "2semanas", "mes"]);
     });
 
-    it("calcula período personalizado com início/fim do dia e rótulo DD/MM", () => {
+    it("calcula período personalizado com início/fim do dia e rótulo com ano", () => {
       const periodo = buildPeriodFromPreset("personalizado", "2024-03-05", "2024-03-10");
       expect(periodo.start).toBe(moment("2024-03-05").startOf("day").toISOString());
       expect(periodo.end).toBe(moment("2024-03-10").endOf("day").toISOString());
-      expect(periodo.label).toBe("05/03 – 10/03");
+      expect(periodo.label).toBe("05/03/2024 – 10/03/2024");
     });
 
-    it("calcula o preset de mês subtraindo 30 dias", () => {
+    it("rótulo distingue períodos que atravessam o ano", () => {
+      expect(buildPeriodFromPreset("personalizado", "2024-12-28", "2025-01-03").label).toBe(
+        "28/12/2024 – 03/01/2025"
+      );
+    });
+
+    it("preset de mês cobre exatamente 30 dias contando hoje", () => {
       const periodo = buildPeriodFromPreset("mes");
-      const dias = moment(periodo.end).diff(moment(periodo.start), "days");
+      const dias = moment(periodo.end).diff(moment(periodo.start), "days") + 1;
       expect(dias).toBe(30);
-      expect(periodo.label).toMatch(/^\d{2}\/\d{2} – \d{2}\/\d{2}$/);
+      expect(moment(periodo.end).isSame(moment(), "day")).toBe(true);
+      expect(periodo.label).toMatch(/^\d{2}\/\d{2}\/\d{4} – \d{2}\/\d{2}\/\d{4}$/);
     });
 
-    it("usa o primeiro preset (semana) quando a chave é desconhecida", () => {
+    it("usa o primeiro preset (semana, 7 dias contando hoje) quando a chave é desconhecida", () => {
       const periodo = buildPeriodFromPreset("inexistente");
-      expect(moment(periodo.end).diff(moment(periodo.start), "days")).toBe(7);
+      expect(moment(periodo.end).diff(moment(periodo.start), "days") + 1).toBe(7);
+    });
+  });
+
+  describe("getPresetRange / isValidCustomPeriod", () => {
+    it("'Última semana' vai do início de 6 dias atrás ao fim de hoje", () => {
+      const agora = moment("2024-03-10T15:00:00");
+      const { start, end } = getPresetRange("semana", agora);
+      expect(start.format("YYYY-MM-DD HH:mm")).toBe("2024-03-04 00:00");
+      expect(end.format("YYYY-MM-DD HH:mm")).toBe("2024-03-10 23:59");
+    });
+
+    it("período personalizado exige as duas datas e início <= fim", () => {
+      expect(isValidCustomPeriod("2024-03-01", "2024-03-10")).toBe(true);
+      expect(isValidCustomPeriod("2024-03-10", "2024-03-10")).toBe(true);
+      expect(isValidCustomPeriod("2024-03-11", "2024-03-10")).toBe(false);
+      expect(isValidCustomPeriod("", "2024-03-10")).toBe(false);
     });
   });
 
@@ -118,7 +143,7 @@ describe("services/api/clinicalReport", () => {
       });
       const serie = await fetchPlataformSeries("p1", "Pitaco");
       expect(axios.get).toHaveBeenCalledWith(
-        `${BASE}/pacients/p1/plataforms/statistics?sort=asc&gameDevice=Pitaco`,
+        `${BASE}/pacients/p1/plataforms/statistics?sort=asc&devices=Pitaco`,
         HEADERS
       );
       expect(serie[0]).toEqual({
@@ -132,6 +157,16 @@ describe("services/api/clinicalReport", () => {
     it("fetchPlataformSeries devolve lista vazia sem dados", async () => {
       axios.get.mockResolvedValue({ data: {} });
       await expect(fetchPlataformSeries("p1", "Cinta")).resolves.toEqual([]);
+    });
+
+    it("fetchPlataformSeries envia o nome exato do dispositivo em `devices` (codificado)", async () => {
+      axios.get.mockResolvedValue({ data: {} });
+      await fetchPlataformSeries("p1", "Manovacuômetro");
+      expect(axios.get).toHaveBeenCalledWith(
+        `${BASE}/pacients/p1/plataforms/statistics?sort=asc&devices=${encodeURIComponent("Manovacuômetro")}`,
+        HEADERS
+      );
+      expect(axios.get.mock.calls[0][0]).not.toContain("gameDevice");
     });
 
     it("fetchGameParameterSeries mapeia CGc e ordena por data", async () => {

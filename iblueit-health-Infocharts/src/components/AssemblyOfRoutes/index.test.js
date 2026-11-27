@@ -50,11 +50,24 @@ describe("<AssemblyOfRoutes /> (controle de acesso às rotas)", () => {
   });
 
   it("usuário autenticado acessa rota privada dentro do layout", () => {
-    salvarCredenciais();
+    salvarCredenciais({ role: "Therapist" });
     renderizarEm("/relatorio-clinico");
     expect(screen.getByTestId("pagina-Layout")).toBeInTheDocument();
     expect(screen.getByTestId("pagina-ClinicalReport")).toBeInTheDocument();
     expect(document.title).toBe("I Blue It - Relatório Clínico");
+  });
+
+  it("administrador também acessa o relatório clínico", () => {
+    salvarCredenciais({ role: "Administrator" });
+    renderizarEm("/relatorio-clinico");
+    expect(screen.getByTestId("pagina-ClinicalReport")).toBeInTheDocument();
+  });
+
+  it("paciente (role User) é redirecionado ao painel ao abrir o relatório clínico", () => {
+    salvarCredenciais({ role: "User" });
+    renderizarEm("/relatorio-clinico");
+    expect(screen.queryByTestId("pagina-ClinicalReport")).not.toBeInTheDocument();
+    expect(screen.getByTestId("pagina-InformationPanel")).toBeInTheDocument();
   });
 
   it("usuário autenticado que abre rota pública vai para o painel de informações", () => {

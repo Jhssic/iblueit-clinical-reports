@@ -54,11 +54,11 @@ module.exports = async function createGameParameter(context, req) {
             GameParameterModels.SizeDownThreshold = gameParameterReq.SizeDownThreshold;
             const savedGameParameterReq = await GameParameterModels.save();
             context.log("[DB UPDATING] - Game Parameter: ", savedGameParameterReq);
-            context.res = { status: 201, body: utils.createResponse(true, true, "Paciente salvo com sucesso.", savedGameParameterReq, null) }
+            context.res = { status: 201, body: utils.createResponse(true, true, "Parâmetros do jogo salvos com sucesso.", savedGameParameterReq, null) }
         } else {
             const savedGameParameterReq = await (new GameParameterModel(gameParameterReq)).save();
             context.log("[DB SAVING] - Game Parameter Saved: ", savedGameParameterReq);
-            context.res = { status: 201, body: utils.createResponse(true, true, "Paciente salvo com sucesso.", savedGameParameterReq, null) }
+            context.res = { status: 201, body: utils.createResponse(true, true, "Parâmetros do jogo salvos com sucesso.", savedGameParameterReq, null) }
         }
     } catch (err) {
         context.log("[DB SAVING] - ERROR: ", err);

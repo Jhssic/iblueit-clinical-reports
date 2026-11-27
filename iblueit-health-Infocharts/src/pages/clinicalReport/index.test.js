@@ -1,5 +1,7 @@
 import React from "react";
-import { screen, fireEvent, within, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, within, waitFor, act } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { Context } from "../../providers/MyContext";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import ClinicalReport from "./index";
@@ -26,9 +28,6 @@ jest.mock("../../services/api/clinicalReport", () => {
 });
 
 jest.mock("../../services/api/patient", () => ({ fetchAll: jest.fn() }));
-
-// O arquivo de rotas importa todas as páginas; aqui só precisamos do caminho HOME.
-jest.mock("../../providers/Routes", () => ({ pathRoutes: { HOME: "/" } }));
 
 jest.mock("jspdf", () => jest.fn());
 jest.mock("jspdf-autotable", () => jest.fn());
@@ -120,15 +119,19 @@ const renderizar = (contextOverrides = {}) => {
 
 const abrirAba = (nome) => fireEvent.click(screen.getByRole("tab", { name: new RegExp(nome) }));
 
+// Com labelId ligado, o nome acessível do Select é "<rótulo> <valor>"
+// (ex.: "Dispositivo Pitaco") — localiza pelo valor no fim do nome.
+const selectComValor = (valorAtual) => screen.getByRole("button", { name: (nome) => nome.endsWith(valorAtual) });
+
 const escolherNoSelect = (valorAtual, opcao) => {
-  fireEvent.mouseDown(screen.getByRole("button", { name: valorAtual }));
+  fireEvent.mouseDown(selectComValor(valorAtual));
   fireEvent.click(within(screen.getByRole("listbox")).getByText(opcao));
 };
 
 beforeEach(() => {
   jest.clearAllMocks();
   sessionStorage.clear();
-  salvarCredenciais({ role: "Fisioterapeuta" });
+  salvarCredenciais({ role: "Therapist" });
   docPdf = criarDocPdf();
   jsPDF.mockImplementation(() => docPdf);
   api.fetchClinicalReportsHistory.mockResolvedValue([]);
@@ -163,6 +166,8 @@ describe("<ClinicalReport /> — estado inicial", () => {
 
     const ini = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
     expect(api.fetchClinicalReportsHistory).toHaveBeenCalledWith("paciente-1", { dataIni: ini, dataFim: "" });
+    // Relatório atual vem sem filtro de data (independe do filtro do Histórico)
+    expect(api.fetchClinicalReportsHistory).toHaveBeenCalledWith("paciente-1", {});
     expect(api.fetchPlataformSeries).toHaveBeenCalledWith("paciente-1", "Pitaco");
     expect(api.fetchGameParameterSeries).toHaveBeenCalledWith("paciente-1");
     expect(api.fetchPacientProfile).toHaveBeenCalledWith("paciente-1");
@@ -176,11 +181,29 @@ describe("<ClinicalReport /> — estado inicial", () => {
     expect(screen.getByText("Gerar novo relatório clínico")).toBeInTheDocument();
   });
 
-  it("mantém a tela utilizável quando o carregamento falha", async () => {
+  it("falha no carregamento mostra erro com 'Tentar novamente' (não o estado vazio)", async () => {
     api.fetchClinicalReportsHistory.mockRejectedValue(new Error("falhou"));
     fetchAll.mockRejectedValue(new Error("sem pacientes"));
+    const { context } = renderizar();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível carregar os dados do paciente.");
+    expect(screen.queryByText("Nenhum relatório gerado ainda para este paciente.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Gerar primeiro relatório" })).not.toBeInTheDocument();
+    expect(context.addNotification).toHaveBeenCalledWith("error", expect.stringContaining("Não foi possível carregar os dados do paciente."));
+    expect(context.addNotification).toHaveBeenCalledWith("error", "Não foi possível carregar a lista de pacientes.");
+
+    // Tentar novamente com sucesso some com o erro e mostra os dados
+    api.fetchClinicalReportsHistory.mockResolvedValue([relatorioSimples()]);
+    fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
+    expect(await screen.findByText("Estável")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("dados que carregaram continuam visíveis quando só uma parte falha", async () => {
+    api.fetchClinicalReportsHistory.mockResolvedValue([relatorioSimples()]);
+    api.fetchAlertCriteria.mockRejectedValue(new Error("x"));
     renderizar();
-    expect(await screen.findByText("Nenhum relatório gerado ainda para este paciente.")).toBeInTheDocument();
+    expect(await screen.findByText("Estável")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 });
 
@@ -198,7 +221,8 @@ describe("<ClinicalReport /> — aba Relatório atual", () => {
     expect(screen.getByText("Alerta ativo")).toBeInTheDocument();
     expect(screen.getByText("DJ — Desempenho do Jogador: deterioração consecutiva em 3 sessões.")).toBeInTheDocument();
     expect(screen.getByText("PJ — Pontos da Jogada: queda percentual maior que 20% entre as duas últimas sessões.")).toBeInTheDocument();
-    expect(screen.getByText("EB — Escala de Borg: abaixo de 4 na última sessão.")).toBeInTheDocument();
+    // EB: maior = pior, então "Abaixo do valor" é avaliado (e descrito) pelo lado de cima
+    expect(screen.getByText("EB — Escala de Borg: acima de 4 na última sessão.")).toBeInTheDocument();
     expect(screen.getByText(/XYZ: sessão identificada como anômala pelo modelo de IA \(sensibilidade 10%\)/)).toBeInTheDocument();
 
     expect(screen.getByText("Possível inconsistência no texto gerado")).toBeInTheDocument();
@@ -258,8 +282,8 @@ describe("<ClinicalReport /> — exportação de PDF (RF08)", () => {
     api.fetchClinicalReportsHistory.mockResolvedValue([relatorioCompleto()]);
     api.fetchPacientProfile.mockResolvedValue({
       birthday: "1990-01-01",
-      sex: "Feminino",
-      condition: "DPOC",
+      sex: "Female",
+      condition: "Restrictive",
       weight: 60,
       height: 165,
     });
@@ -272,7 +296,7 @@ describe("<ClinicalReport /> — exportação de PDF (RF08)", () => {
     const textos = docPdf.text.mock.calls.map((c) => c[0]);
     expect(textos).toContain("Relatório Clínico — I Blue It");
     expect(textos).toContain("Crítico");
-    expect(textos.some((t) => /^Maria · \d+ anos · Feminino · DPOC$/.test(t))).toBe(true);
+    expect(textos.some((t) => /^Maria · \d+ anos · Feminino · Restritivo$/.test(t))).toBe(true);
     expect(textos).toContain("Peso/Altura: 60 kg / 165 cm");
     expect(textos).toContain("Dra. Teste · Fisioterapeuta");
     expect(textos).toContain("Alerta ativo");
@@ -358,14 +382,19 @@ describe("<ClinicalReport /> — aba Histórico", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Abrir" })[1]);
     expect(await screen.findByText(/01\/02 – 07\/02 · 2 sessão\(ões\) · Cinta/)).toBeInTheDocument();
 
-    // Arquivar remove da lista e notifica
+    // Arquivar o relatório aberto remove da lista, notifica e recarrega o atual
     abrirAba("Histórico");
-    fireEvent.click(screen.getAllByRole("button", { name: "Arquivar" })[0]);
+    api.fetchClinicalReportsHistory.mockClear();
+    api.fetchClinicalReportsHistory.mockResolvedValue([r1]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Arquivar" })[1]);
     await waitFor(() =>
       expect(context.addNotification).toHaveBeenCalledWith("success", "Relatório arquivado.")
     );
     expect(api.archiveClinicalReport).toHaveBeenCalledWith("paciente-1", "r2");
     expect(screen.getAllByRole("button", { name: "Arquivar" })).toHaveLength(1);
+    await waitFor(() => expect(api.fetchClinicalReportsHistory).toHaveBeenCalledWith("paciente-1", {}));
+    abrirAba("Relatório atual");
+    expect(await screen.findByText(/01\/03 – 03\/03 · 4 sessão\(ões\) · Pitaco/)).toBeInTheDocument();
   });
 
   it("notifica erro quando o arquivamento falha", async () => {
@@ -529,7 +558,7 @@ describe("<ClinicalReport /> — aba Alertas (RF10)", () => {
     await screen.findByText("Nenhum relatório gerado ainda para este paciente.");
     abrirAba("Alertas");
     // Sem critérios salvos, mantém o padrão do RN04
-    expect(screen.getByRole("button", { name: "5 sessões" })).toBeInTheDocument();
+    expect(selectComValor("5 sessões")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Salvar configuração" }));
     await waitFor(() =>
       expect(context.addNotification).toHaveBeenCalledWith("error", "Não foi possível salvar a configuração de alertas.")
@@ -580,11 +609,47 @@ describe("<ClinicalReport /> — aba Gerar relatório (RF05)", () => {
     fireEvent.change(screen.getByLabelText("Data final"), { target: { value: "2024-03-10" } });
     fireEvent.click(screen.getByRole("button", { name: "Processar e gerar relatório" }));
     await waitFor(() => expect(api.generateClinicalReport).toHaveBeenCalled());
-    expect(api.generateClinicalReport.mock.calls[0][1].period.label).toBe("01/03 – 10/03");
+    expect(api.generateClinicalReport.mock.calls[0][1].period.label).toBe("01/03/2024 – 10/03/2024");
   });
 
-  it("mostra a mensagem de dados insuficientes (FA01)", async () => {
-    api.generateClinicalReport.mockResolvedValue({ success: false, message: "Dados insuficientes no período." });
+  it("recusa período personalizado com data inicial depois da final (sem chamar a API)", async () => {
+    const { context } = renderizar();
+    await abrirGerar();
+    escolherNoSelect("Última semana", "Personalizado");
+    fireEvent.change(screen.getByLabelText("Data inicial"), { target: { value: "2024-03-10" } });
+    fireEvent.change(screen.getByLabelText("Data final"), { target: { value: "2024-03-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Processar e gerar relatório" }));
+    expect(context.addNotification).toHaveBeenCalledWith(
+      "error",
+      "A data inicial deve ser anterior ou igual à data final."
+    );
+    expect(api.generateClinicalReport).not.toHaveBeenCalled();
+  });
+
+  it("geração bem-sucedida seguida de falha ao recarregar mostra erro de carga, não de geração", async () => {
+    const novo = relatorioSimples({ _id: "novo", period: { label: "20/11/2026 – 26/11/2026" } });
+    api.generateClinicalReport.mockResolvedValue({ success: true, data: novo });
+    const { context } = renderizar();
+    await abrirGerar();
+
+    api.fetchClinicalReportsHistory.mockRejectedValue(new Error("rede caiu"));
+    fireEvent.click(screen.getByRole("button", { name: "Processar e gerar relatório" }));
+
+    await waitFor(() =>
+      expect(context.addNotification).toHaveBeenCalledWith("success", "Relatório clínico gerado com sucesso.")
+    );
+    // O relatório recém-gerado aparece (vem na resposta da geração) e a falha
+    // de recarga vira erro de carga com "Tentar novamente".
+    expect(await screen.findByText(/20\/11\/2026 – 26\/11\/2026/)).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível carregar os dados do paciente.");
+    expect(screen.queryByText(/Não foi possível gerar o relatório/)).not.toBeInTheDocument();
+    expect(api.generateClinicalReport).toHaveBeenCalledTimes(1);
+  });
+
+  it("mostra a mensagem de dados insuficientes (FA01, HTTP 422)", async () => {
+    api.generateClinicalReport.mockRejectedValue({
+      response: { status: 422, data: { success: false, message: "Dados insuficientes no período." } },
+    });
     renderizar();
     await abrirGerar();
     fireEvent.click(screen.getByRole("button", { name: "Processar e gerar relatório" }));
@@ -607,14 +672,14 @@ describe("<ClinicalReport /> — aba Gerar relatório (RF05)", () => {
   });
 
   it("exibe barra de progresso enquanto gera", async () => {
-    let resolver;
-    api.generateClinicalReport.mockReturnValue(new Promise((r) => (resolver = r)));
+    let rejeitar;
+    api.generateClinicalReport.mockReturnValue(new Promise((_, r) => (rejeitar = r)));
     renderizar();
     await abrirGerar();
     fireEvent.click(screen.getByRole("button", { name: "Processar e gerar relatório" }));
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Processar e gerar relatório" })).not.toBeInTheDocument();
-    await act(async () => resolver({ success: false, message: "fim" }));
+    await act(async () => rejeitar({ response: { data: { message: "fim" } } }));
     expect(screen.getByText("fim")).toBeInTheDocument();
   });
 });
@@ -629,7 +694,7 @@ describe("<ClinicalReport /> — aba Pacientes (RF09)", () => {
 
   it("lista pacientes com status e seleciona um paciente", async () => {
     fetchAll.mockResolvedValue([
-      { id: "paciente-1", name: "Maria", condition: "DPOC", latestReport: { status: "critico", alerts: [{ metric: "DJ" }] } },
+      { id: "paciente-1", name: "Maria", condition: "Restrictive", latestReport: { alerts: [{ metric: "DJ" }] } },
       { id: "p2", name: "João", condition: null, latestReport: null, birthDate: "1980-05-05" },
       { id: "p3", name: "Ana", condition: "Asma", latestReport: { status: "estavel", alerts: [], currentMetrics: { DJ: 1 }, previousMetrics: { DJ: 1 } } },
     ]);
@@ -639,6 +704,7 @@ describe("<ClinicalReport /> — aba Pacientes (RF09)", () => {
 
     const linhaMaria = screen.getByText("Maria", { selector: "td" }).closest("tr");
     expect(within(linhaMaria).getByText("Crítico")).toBeInTheDocument();
+    expect(within(linhaMaria).getByText("Restritivo")).toBeInTheDocument();
     expect(linhaMaria).toHaveClass("Mui-selected");
     const linhaJoao = screen.getByText("João").closest("tr");
     expect(within(linhaJoao).getByText("Sem dados")).toBeInTheDocument();
@@ -650,5 +716,251 @@ describe("<ClinicalReport /> — aba Pacientes (RF09)", () => {
     expect(context.setPatientName).toHaveBeenCalledWith("João");
     expect(context.setPatientBirthDate).toHaveBeenCalledWith("1980-05-05");
     expect(screen.getByText("Nenhum relatório gerado ainda para este paciente.")).toBeInTheDocument();
+  });
+});
+
+describe("<ClinicalReport /> — correções da varredura", () => {
+  const deferred = () => {
+    let resolve;
+    const promise = new Promise((r) => (resolve = r));
+    return { promise, resolve };
+  };
+
+  const montarComTroca = (pacienteInicial) => {
+    const ctxA = buildContext({ patientId: pacienteInicial, patientName: "Ana" });
+    const arvore = (ctx) => (
+      <Context.Provider value={ctx}>
+        <MemoryRouter>
+          <ClinicalReport />
+        </MemoryRouter>
+      </Context.Provider>
+    );
+    const utils = render(arvore(ctxA));
+    const trocarPara = (patientId, patientName) => {
+      const ctxB = { ...ctxA, patientId, patientName };
+      utils.rerender(arvore(ctxB));
+      return ctxB;
+    };
+    return { ...utils, trocarPara };
+  };
+
+  it("ignora respostas atrasadas do paciente anterior e não herda critérios/perfil (corrida)", async () => {
+    const histA = deferred();
+    const perfilA = deferred();
+    api.fetchClinicalReportsHistory.mockImplementation((id) =>
+      id === "A" ? histA.promise : Promise.resolve([relatorioSimples({ _id: "rb", period: { label: "Relatório do B" } })])
+    );
+    api.fetchPacientProfile.mockImplementation((id) =>
+      id === "A" ? perfilA.promise : Promise.resolve({ sex: "Male", condition: "Healthy" })
+    );
+    api.fetchAlertCriteria.mockImplementation((id) =>
+      Promise.resolve(id === "A" ? [{ metric: "PJ", condition: "Abaixo do valor", triggerValue: 50 }] : [])
+    );
+    api.saveAlertCriteria.mockResolvedValue({ success: true });
+
+    const { trocarPara } = montarComTroca("A");
+    trocarPara("B", "Bruno");
+    expect(await screen.findByText(/Relatório do B/)).toBeInTheDocument();
+
+    // Respostas de A chegam depois — não podem sobrescrever B
+    await act(async () => {
+      histA.resolve([relatorioCompleto({ period: { label: "Relatório da A" } })]);
+      perfilA.resolve({ sex: "Female", condition: "Obstructive" });
+    });
+    expect(screen.queryByText(/Relatório da A/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Relatório do B/)).toBeInTheDocument();
+
+    // PDF usa nome e perfil do B
+    fireEvent.click(screen.getByRole("button", { name: /Exportar PDF/ }));
+    await waitFor(() => expect(docPdf.save).toHaveBeenCalled());
+    const textos = docPdf.text.mock.calls.map((c) => c[0]);
+    expect(textos).toContain("Bruno · Masculino · Saudável");
+
+    // B não tem critérios: mostra o padrão e salva o padrão para o B
+    abrirAba("Alertas");
+    expect(selectComValor("5 sessões")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Valor limite")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Salvar configuração" }));
+    await waitFor(() =>
+      expect(api.saveAlertCriteria).toHaveBeenCalledWith("B", [
+        { metric: "DJ", condition: "Deterioração consecutiva", triggerValue: 5 },
+      ])
+    );
+  });
+
+  it("limpa os dados do paciente anterior ao trocar de paciente", async () => {
+    api.fetchClinicalReportsHistory.mockImplementation((id) =>
+      id === "A" ? Promise.resolve([relatorioSimples({ period: { label: "Relatório da A" } })]) : new Promise(() => {})
+    );
+    const { trocarPara } = montarComTroca("A");
+    expect(await screen.findByText(/Relatório da A/)).toBeInTheDocument();
+    trocarPara("B", "Bruno");
+    expect(screen.queryByText(/Relatório da A/)).not.toBeInTheDocument();
+    expect(screen.getByText("Carregando dados do paciente...")).toBeInTheDocument();
+    // drena as cargas do B que já resolveram
+    await waitFor(() => expect(api.fetchAlertCriteria).toHaveBeenCalledWith("B"));
+  });
+
+  it("relatório atual não depende do filtro do Histórico (ex.: virada do mês)", async () => {
+    const doMesPassado = relatorioSimples({ period: { label: "Relatório de 30/11" } });
+    api.fetchClinicalReportsHistory.mockImplementation((_id, filtro) =>
+      Promise.resolve(filtro && filtro.dataIni ? [] : [doMesPassado])
+    );
+    renderizar();
+    expect(await screen.findByText(/Relatório de 30\/11/)).toBeInTheDocument();
+    expect(screen.queryByText("Nenhum relatório gerado ainda para este paciente.")).not.toBeInTheDocument();
+    abrirAba("Histórico");
+    expect(screen.getByText("Nenhum relatório gerado.")).toBeInTheDocument();
+  });
+
+  it("'Filtrar' com falha mostra erro de carga em vez de rejeição não tratada", async () => {
+    const { context } = renderizar();
+    await screen.findByText("Nenhum relatório gerado ainda para este paciente.");
+    abrirAba("Histórico");
+    api.fetchClinicalReportsHistory.mockRejectedValue(new Error("x"));
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(context.addNotification).toHaveBeenCalledWith("error", expect.stringContaining("Não foi possível carregar"));
+  });
+
+  it("arquivar com 'Mostrar arquivados' ligado atualiza a lista de arquivados", async () => {
+    const ativo = relatorioSimples({ _id: "ativo", period: { label: "Ativo 1" } });
+    let arquivados = [];
+    api.fetchClinicalReportsHistory.mockImplementation((_id, filtro) =>
+      Promise.resolve(filtro && filtro.archived ? arquivados : [ativo])
+    );
+    api.archiveClinicalReport.mockImplementation(() => {
+      arquivados = [{ ...ativo, archived: true }];
+      return Promise.resolve({ success: true });
+    });
+    renderizar();
+    await screen.findByText("Estável");
+    abrirAba("Histórico");
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(await screen.findByText("Nenhum relatório arquivado.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Arquivar" }));
+    expect(await screen.findByRole("button", { name: "Excluir definitivamente" })).toBeInTheDocument();
+    expect(screen.queryByText("Nenhum relatório arquivado.")).not.toBeInTheDocument();
+  });
+
+  it("trocar a condição do critério volta o gatilho ao padrão da nova condição", async () => {
+    api.fetchAlertCriteria.mockResolvedValue([{ metric: "DJ", condition: "Queda percentual >", triggerValue: 30 }]);
+    api.saveAlertCriteria.mockResolvedValue({ success: true });
+    renderizar();
+    await screen.findByText("Nenhum relatório gerado ainda para este paciente.");
+    abrirAba("Alertas");
+    expect(screen.getByLabelText("Queda mínima (%)")).toHaveValue(30);
+
+    escolherNoSelect("Queda percentual >", "Deterioração consecutiva");
+    expect(selectComValor("5 sessões")).toBeInTheDocument();
+    escolherNoSelect("Deterioração consecutiva", "Anomalia (IA)");
+    expect(screen.getByLabelText("Sensibilidade (%)")).toHaveValue(10);
+    escolherNoSelect("Anomalia (IA)", "Queda percentual >");
+    expect(screen.getByLabelText("Queda mínima (%)")).toHaveValue(20);
+    escolherNoSelect("Queda percentual >", "Deterioração consecutiva");
+
+    fireEvent.click(screen.getByRole("button", { name: "Salvar configuração" }));
+    await waitFor(() =>
+      expect(api.saveAlertCriteria).toHaveBeenCalledWith("paciente-1", [
+        { metric: "DJ", condition: "Deterioração consecutiva", triggerValue: 5 },
+      ])
+    );
+  });
+
+  it("valida o gatilho antes de salvar (mesmas regras do backend)", async () => {
+    api.fetchAlertCriteria.mockResolvedValue([{ metric: "DJ", condition: "Anomalia (IA)", triggerValue: 10 }]);
+    const { context } = renderizar();
+    await screen.findByText("Nenhum relatório gerado ainda para este paciente.");
+    abrirAba("Alertas");
+    fireEvent.change(screen.getByLabelText("Sensibilidade (%)"), { target: { value: "150" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar configuração" }));
+    expect(context.addNotification).toHaveBeenCalledWith("error", "Critério 1: o percentual deve estar entre 1 e 100.");
+    expect(api.saveAlertCriteria).not.toHaveBeenCalled();
+  });
+
+  it("ponto vermelho só na última sessão do período do relatório, comparando com ano", async () => {
+    api.fetchClinicalReportsHistory.mockResolvedValue([relatorioCompleto()]); // período 01–03/03/2024, Pitaco
+    api.fetchPlataformSeries.mockResolvedValue([
+      { date: "02/03", timestamp: new Date(2023, 2, 2, 12).getTime(), DJ: 0.4 }, // mesmo DD/MM, outro ano
+      { date: "01/03", timestamp: new Date(2024, 2, 1, 12).getTime(), DJ: 0.6 },
+      { date: "02/03", timestamp: new Date(2024, 2, 2, 12).getTime(), DJ: 0.5 },
+      { date: "10/03", timestamp: new Date(2024, 2, 10, 12).getTime(), DJ: 0.7 },
+    ]);
+    const { container } = renderizar();
+    await screen.findByText("Crítico");
+    abrirAba("Gráficos");
+    await waitFor(
+      // eslint-disable-next-line testing-library/no-container, testing-library/no-node-access -- pontos do recharts (SVG) não têm papel acessível
+      () => expect(container.querySelectorAll('circle[fill="#1e2b48"]').length).toBe(3),
+      { timeout: 4000 }
+    );
+    // eslint-disable-next-line testing-library/no-container, testing-library/no-node-access -- pontos do recharts (SVG) não têm papel acessível
+    expect(container.querySelectorAll('circle[fill="#d32f2f"]')).toHaveLength(1);
+  });
+
+  it("filtro 'Última semana' dos gráficos usa 7 dias contando hoje (igual à geração)", async () => {
+    const inicioDe6DiasAtras = new Date();
+    inicioDe6DiasAtras.setHours(0, 0, 0, 0);
+    inicioDe6DiasAtras.setDate(inicioDe6DiasAtras.getDate() - 6);
+    api.fetchPlataformSeries.mockResolvedValue([
+      { date: "fora", timestamp: inicioDe6DiasAtras.getTime() - 1, DJ: 0.5 },
+      { date: "dentro", timestamp: inicioDe6DiasAtras.getTime(), DJ: 0.6 },
+      { date: "hoje", timestamp: Date.now(), DJ: 0.7 },
+    ]);
+    const { container } = renderizar();
+    await screen.findByText("Nenhum relatório gerado ainda para este paciente.");
+    abrirAba("Gráficos");
+    escolherNoSelect("Todo o período", "Última semana");
+    await waitFor(
+      // eslint-disable-next-line testing-library/no-container, testing-library/no-node-access -- pontos do recharts (SVG) não têm papel acessível
+      () => expect(container.querySelectorAll('circle[fill="#1e2b48"]').length).toBe(2),
+      { timeout: 4000 }
+    );
+  });
+
+  it("breadcrumb '← Pacientes' abre a aba Pacientes sem recarregar a página", async () => {
+    renderizar();
+    await screen.findByText("Nenhum relatório gerado ainda para este paciente.");
+    const breadcrumb = screen.getByRole("button", { name: "← Pacientes" });
+    expect(breadcrumb.tagName).toBe("BUTTON");
+    fireEvent.click(breadcrumb);
+    expect(screen.getByText("Lista de pacientes")).toBeInTheDocument();
+  });
+
+  it("sem paciente selecionado mostra a lista de pacientes para escolher", async () => {
+    fetchAll.mockResolvedValue([{ id: "p2", name: "João" }]);
+    renderizar({ patientId: undefined, patientName: undefined });
+    expect(await screen.findByText("João")).toBeInTheDocument();
+  });
+
+  it("linhas da aba Pacientes funcionam pelo teclado (Enter/Espaço) e têm rótulo", async () => {
+    fetchAll.mockResolvedValue([
+      { id: "p2", name: "João", latestReport: null, birthDate: "1980-05-05" },
+      { id: "p3", name: "Ana", latestReport: { alerts: [{ metric: "DJ" }] } },
+    ]);
+    const { context } = renderizar();
+    await screen.findByText("Nenhum relatório gerado ainda para este paciente.");
+    abrirAba("Pacientes");
+    const linhaJoao = screen.getByRole("button", { name: "Abrir relatório clínico de João" });
+    expect(linhaJoao).toHaveAttribute("tabindex", "0");
+    fireEvent.keyDown(linhaJoao, { key: "Enter" });
+    expect(context.setPatientId).toHaveBeenCalledWith("p2");
+
+    abrirAba("Pacientes");
+    fireEvent.keyDown(screen.getByRole("button", { name: "Abrir relatório clínico de Ana (status: Crítico)" }), { key: " " });
+    expect(context.setPatientId).toHaveBeenCalledWith("p3");
+  });
+
+  it("selects anunciam o rótulo (InputLabel ligado por labelId)", async () => {
+    renderizar();
+    await screen.findByText("Nenhum relatório gerado ainda para este paciente.");
+    abrirAba("Gerar relatório");
+    expect(screen.getByRole("button", { name: "Período de referência Última semana" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dispositivo Pitaco" })).toBeInTheDocument();
+    abrirAba("Alertas");
+    expect(screen.getByRole("button", { name: "Métrica DJ — Desempenho do Jogador" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Condição Deterioração consecutiva" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Disparar após 5 sessões" })).toBeInTheDocument();
   });
 });

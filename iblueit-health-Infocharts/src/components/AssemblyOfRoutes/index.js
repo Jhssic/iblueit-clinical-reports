@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Navigate, Route, Routes } from "react-router-dom";
-import routes, { pathRoutes } from "../../providers/Routes.jsx";
+import routes, { pathRoutes, hasRoleAccess } from "../../providers/Routes.jsx";
 import { isAuthenticated } from "../../providers/sessionStorage";
 import LayoutPage from "../../pages/layout/index";
 
@@ -18,6 +18,9 @@ const ValidateRoutes = ({ route, layoutPage = false }) => {
   } else {
     if (authenticated) {
       if (layoutPage) return <LayoutPage />;
+      // Rota restrita a alguns papéis (ex.: relatório clínico) — os demais
+      // voltam ao painel de informações.
+      if (!hasRoleAccess(route.roles)) return <Navigate to={pathRoutes.INFORMATION_PANEL} replace />;
       document.title = `I Blue It - ${route.title}`;
       return (route.component());
     }

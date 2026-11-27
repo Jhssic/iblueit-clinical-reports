@@ -1,11 +1,15 @@
 const IA_MAX_ATTEMPTS = 3;
 
 // Período anterior, de mesma duração do atual, terminando onde o atual começa.
+// O fim é EXCLUSIVO (endExclusive): o atual usa $gte start, então com $lte
+// aqui uma sessão exatamente em `start` seria contada nos dois períodos.
 async function extractPreviousPeriodMetrics(clinicalMetrics, mongoose, { pacientId, device, start, end }) {
     const durationMs = end.getTime() - start.getTime();
     const prevEnd = new Date(start);
     const prevStart = new Date(start.getTime() - durationMs);
-    return clinicalMetrics.extractMetricsForPeriod({ pacientId, device, start: prevStart, end: prevEnd }, mongoose);
+    return clinicalMetrics.extractMetricsForPeriod(
+        { pacientId, device, start: prevStart, end: prevEnd, endExclusive: true }, mongoose
+    );
 }
 
 // Métricas da avaliação inicial: primeiro relatório ativo do paciente no mesmo dispositivo.
@@ -158,12 +162,14 @@ module.exports = async function generateClinicalReport(context, req) {
         const current = await clinicalMetrics.extractMetricsForPeriod({ pacientId, device, start, end }, mongoose);
 
         // --- RF03 / FA01: valida dados mínimos antes de acionar a IA ---
+        // 422 (Unprocessable Entity): a requisição é válida, mas os dados do
+        // período não permitem gerar o relatório — a IA não é chamada.
         if (!clinicalMetrics.hasMinimumData(current)) {
             const missing = current.sessionCount === 0
                 ? ["nenhuma sessão registrada no período selecionado"]
                 : clinicalMetrics.missingFields(current);
             context.res = {
-                status: 200,
+                status: 422,
                 body: utils.createResponse(
                     false,
                     true,
@@ -176,8 +182,12 @@ module.exports = async function generateClinicalReport(context, req) {
             return;
         }
 
-        // --- RN06: primeiro relatório do paciente? ---
-        const priorReportsCount = await ClinicalReportModel.countDocuments({ pacientId, archived: false });
+        // --- RN06: primeiro relatório do paciente NESTE dispositivo? ---
+        // Conta por dispositivo, igual a findInitialMetrics: com a contagem
+        // geral, o primeiro relatório do Manovacuômetro de um paciente que já
+        // tinha relatório do Pitaco não virava avaliação inicial e ficava sem
+        // base de comparação nenhuma.
+        const priorReportsCount = await ClinicalReportModel.countDocuments({ pacientId, device, archived: false });
         const isFirstReport = priorReportsCount === 0;
 
         // --- período anterior (mesma duração) e avaliação inicial, para contexto do resumo ---
@@ -199,6 +209,11 @@ module.exports = async function generateClinicalReport(context, req) {
         // --- FA02: campos opcionais que não puderam ser consultados no período ---
         const missingOptionalFields = clinicalMetrics.missingOptionalFields(current);
 
+        // --- RF09/RF10/RN04: avalia critérios configurados (ou o padrão, se nenhum existir) ---
+        // Antes da IA, pra que os alertas entrem no texto narrativo; só com
+        // sessões até o fim do período do relatório (ver alertEvaluation.js).
+        const alertsTriggered = await evaluateAlerts(pacientId, device, mongoose, context, end);
+
         const iaPayload = {
             device,
             period: { start: period.start, end: period.end },
@@ -210,7 +225,7 @@ module.exports = async function generateClinicalReport(context, req) {
             metricSources: current.metricSources,
             missingOptionalFields,
             patientContext,
-            alerts: [],
+            alerts: alertsTriggered,
         };
 
         // --- RF05 / FA03: chamada à API de IA (ver requestReportFromAI) ---
@@ -225,11 +240,8 @@ module.exports = async function generateClinicalReport(context, req) {
             return;
         }
         const iaResponse = iaResult.data;
-
-        // --- RF09/RF10/RN04: avalia critérios configurados (ou o padrão, se nenhum existir) ---
-        const alertsTriggered = await evaluateAlerts(pacientId, device, mongoose, context);
         const status = computePatientStatus({ alerts: alertsTriggered, currentMetrics: current.metrics, previousMetrics });
-
+      
         const savedReport = await new ClinicalReportModel({
             pacientId,
             device,

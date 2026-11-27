@@ -39,9 +39,11 @@ module.exports = async function deleteClinicalReport(context, req) {
         // --- LGPD Art. 18: exclusão definitiva só é permitida sobre um
         // relatório já arquivado (RN05) — garante que a exclusão de verdade
         // é uma ação deliberada em duas etapas, não um clique só na lista ativa.
+        // 409 (Conflict): o pedido é válido, mas o estado atual do relatório
+        // (ainda ativo) não permite a exclusão.
         if (!report.archived) {
             context.res = {
-                status: 400,
+                status: 409,
                 body: utils.createResponse(false, true, "Arquive o relatório antes de excluí-lo definitivamente.", null, null),
             };
             context.done();

@@ -47,7 +47,8 @@ describe('CreateAccount', () => {
         expect(UserAccountModel.findOne).toHaveBeenCalledWith({
             $or: [{ email: 'ana@exemplo.com', role: 'Administrator' }, { username: 'ana', role: 'Administrator' }],
         });
-        expect(context.res.status).toBe(400);
+        expect(context.res.status).toBe(409);
+        expect(context.res.body.success).toBe(false);
         expect(UserAccountModel.instances).toHaveLength(0);
     });
 
@@ -55,7 +56,7 @@ describe('CreateAccount', () => {
         UserAccountModel.findOne.mockResolvedValue({ _id: 'existente' });
         const context = await run(paciente());
         expect(UserAccountModel.findOne).toHaveBeenCalledWith({ username: 'pedro', role: 'User', 'gameToken.token': 'tok' });
-        expect(context.res.status).toBe(400);
+        expect(context.res.status).toBe(409);
         expect(context.res.body.message).toBe('Já existe um usuário cadastrado com este nome.');
     });
 

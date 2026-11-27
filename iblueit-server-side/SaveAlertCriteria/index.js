@@ -6,31 +6,18 @@ module.exports = async function saveAlertCriteria(context, req) {
     }
     mongoose.Promise = global.Promise;
 
-    require('../shared/UserAccount');
     require('../shared/AlertCriteria');
-    const UserAccountModel = mongoose.model('UserAccount');
     const AlertCriteriaModel = mongoose.model('AlertCriteria');
 
     const utils = require('../shared/utils');
     const validations = require('../shared/Validators');
 
-    const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
-    if (!isVerifiedGameToken) {
-        context.res = { status: 403, body: utils.createResponse(false, false, "Chave de acesso inválida.", null, 1) };
-        context.done();
-        return;
-    }
-
-    // RN01: apenas Administrator pode configurar alertas
-    const requestingUser = await UserAccountModel.findOne({ "gameToken.token": req.headers.gametoken });
-    if (requestingUser?.role !== "Administrator") {
-        context.res = {
-            status: 403,
-            body: utils.createResponse(false, false, "Apenas profissionais autenticados podem configurar alertas.", null, 1),
-        };
-        context.done();
-        return;
-    }
+    // RN01: Administrator ou Therapist — o fisioterapeuta é quem configura os
+    // alertas do paciente (persona do README), não só o administrador.
+    const requestingUser = await utils.requireClinicalStaff(
+        context, req, mongoose, "Apenas profissionais autenticados podem configurar alertas."
+    );
+    if (!requestingUser) return;
 
     const pacientId = req.params.pacientId;
     if (!pacientId) {
@@ -57,7 +44,12 @@ module.exports = async function saveAlertCriteria(context, req) {
 
     try {
         // Substitui todos os critérios do paciente pela lista enviada.
-        await AlertCriteriaModel.deleteMany({ pacientId });
+        // Insere os novos ANTES de apagar os antigos (pelos _id lidos antes):
+        // apagando primeiro, uma falha no insert deixava o paciente sem
+        // nenhum critério configurado. Se o delete falhar depois do insert,
+        // sobram duplicados que o próximo salvamento limpa — melhor que perder dados.
+        const previous = await AlertCriteriaModel.find({ pacientId }, '_id');
+        const previousIds = (previous || []).map((c) => c._id);
 
         const created = await AlertCriteriaModel.insertMany(
             body.criteria.map((c) => ({
@@ -67,6 +59,10 @@ module.exports = async function saveAlertCriteria(context, req) {
                 triggerValue: c.triggerValue,
             }))
         );
+
+        if (previousIds.length) {
+            await AlertCriteriaModel.deleteMany({ _id: { $in: previousIds } });
+        }
 
         context.res = {
             status: 201,

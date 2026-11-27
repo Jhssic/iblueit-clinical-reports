@@ -31,9 +31,10 @@ describe('DeletePacient', () => {
         expect(context.res.status).toBe(403);
     });
 
-    test('responde 404 com pacientId fora do formato ObjectId', async () => {
+    test('responde 400 com pacientId fora do formato ObjectId', async () => {
         const context = await run({ params: { pacientId: '123' } });
-        expect(context.res.status).toBe(404);
+        expect(context.res.status).toBe(400);
+        expect(context.res.body.message).toBe('Parâmetros inválidos.');
         expect(M('Pacient').deleteOne).not.toHaveBeenCalled();
     });
 

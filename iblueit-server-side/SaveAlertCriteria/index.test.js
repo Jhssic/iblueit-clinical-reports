@@ -33,11 +33,22 @@ describe('SaveAlertCriteria', () => {
         expect(context.res.body.message).toBe('Chave de acesso inválida.');
     });
 
-    test('RN01: só Administrator configura alertas (Therapist recebe 403)', async () => {
-        UserAccountModel.findOne.mockResolvedValue({ _id: 't', role: 'Therapist' });
+    test('RN01: usuário sem papel clínico recebe 403', async () => {
+        UserAccountModel.findOne.mockResolvedValue({ _id: 'u', role: 'User' });
         const context = await run();
         expect(context.res.status).toBe(403);
         expect(context.res.body.message).toMatch(/configurar alertas/);
+        expect(AlertCriteriaModel.insertMany).not.toHaveBeenCalled();
+    });
+
+    test('RN01: Therapist (fisioterapeuta) também configura alertas', async () => {
+        UserAccountModel.findOne.mockResolvedValue({ _id: 't', role: 'Therapist' });
+        AlertCriteriaModel.find.mockResolvedValue([]);
+        AlertCriteriaModel.insertMany.mockImplementation((docs) => Promise.resolve(docs));
+        const context = await run();
+        expect(context.res.status).toBe(201);
+        // sem critérios anteriores, não há o que apagar
+        expect(AlertCriteriaModel.deleteMany).not.toHaveBeenCalled();
     });
 
     test('responde 400 sem pacientId', async () => {
@@ -58,13 +69,28 @@ describe('SaveAlertCriteria', () => {
         expect(AlertCriteriaModel.deleteMany).not.toHaveBeenCalled();
     });
 
-    test('substitui todos os critérios do paciente pela lista enviada', async () => {
+    test('responde 400 quando criteria não é enviado ou triggerValue não faz sentido pra condição', async () => {
+        let context = await run({ body: { outro: 1 } });
+        expect(context.res.status).toBe(400);
+        expect(context.res.body.errors).toHaveProperty('criteria');
+
+        context = await run({ body: { criteria: [{ metric: 'DJ', condition: 'Deterioração consecutiva', triggerValue: 1 }] } });
+        expect(context.res.status).toBe(400);
+        expect(context.res.body.errors).toHaveProperty(['criteria.0.triggerValue']);
+        expect(AlertCriteriaModel.insertMany).not.toHaveBeenCalled();
+    });
+
+    test('substitui os critérios: insere os novos primeiro e só depois apaga os antigos pelo _id', async () => {
+        AlertCriteriaModel.find.mockResolvedValue([{ _id: 'old-1' }, { _id: 'old-2' }]);
         AlertCriteriaModel.deleteMany.mockResolvedValue({});
         AlertCriteriaModel.insertMany.mockImplementation((docs) => Promise.resolve(docs));
 
         const context = await run();
 
-        expect(AlertCriteriaModel.deleteMany).toHaveBeenCalledWith({ pacientId: 'pac-1' });
+        expect(AlertCriteriaModel.find).toHaveBeenCalledWith({ pacientId: 'pac-1' }, '_id');
+        expect(AlertCriteriaModel.deleteMany).toHaveBeenCalledWith({ _id: { $in: ['old-1', 'old-2'] } });
+        expect(AlertCriteriaModel.insertMany.mock.invocationCallOrder[0])
+            .toBeLessThan(AlertCriteriaModel.deleteMany.mock.invocationCallOrder[0]);
         expect(AlertCriteriaModel.insertMany).toHaveBeenCalledWith([
             { pacientId: 'pac-1', metric: 'DJ', condition: 'Deterioração consecutiva', triggerValue: 3 },
             { pacientId: 'pac-1', metric: 'EB', condition: 'Abaixo do valor', triggerValue: 2 },
@@ -73,9 +99,11 @@ describe('SaveAlertCriteria', () => {
         expect(context.res.body.data).toHaveLength(2);
     });
 
-    test('responde 500 quando o banco falha', async () => {
-        AlertCriteriaModel.deleteMany.mockRejectedValue(new Error('erro'));
+    test('falha no insert responde 500 e NÃO apaga os critérios antigos', async () => {
+        AlertCriteriaModel.find.mockResolvedValue([{ _id: 'old-1' }]);
+        AlertCriteriaModel.insertMany.mockRejectedValue(new Error('erro'));
         const context = await run();
         expect(context.res.status).toBe(500);
+        expect(AlertCriteriaModel.deleteMany).not.toHaveBeenCalled();
     });
 });
