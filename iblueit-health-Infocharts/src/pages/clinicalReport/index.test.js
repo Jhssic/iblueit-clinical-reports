@@ -694,7 +694,7 @@ describe("<ClinicalReport /> — aba Pacientes (RF09)", () => {
 
   it("lista pacientes com status e seleciona um paciente", async () => {
     fetchAll.mockResolvedValue([
-      { id: "paciente-1", name: "Maria", condition: "Restrictive", latestReport: { alerts: [{ metric: "DJ" }] } },
+      { id: "paciente-1", name: "Maria", condition: "Restrictive", latestReport: { status: "critico", alerts: [{ metric: "DJ" }] } },
       { id: "p2", name: "João", condition: null, latestReport: null, birthDate: "1980-05-05" },
       { id: "p3", name: "Ana", condition: "Asma", latestReport: { status: "estavel", alerts: [], currentMetrics: { DJ: 1 }, previousMetrics: { DJ: 1 } } },
     ]);
@@ -937,7 +937,7 @@ describe("<ClinicalReport /> — correções da varredura", () => {
   it("linhas da aba Pacientes funcionam pelo teclado (Enter/Espaço) e têm rótulo", async () => {
     fetchAll.mockResolvedValue([
       { id: "p2", name: "João", latestReport: null, birthDate: "1980-05-05" },
-      { id: "p3", name: "Ana", latestReport: { alerts: [{ metric: "DJ" }] } },
+      { id: "p3", name: "Ana", latestReport: { status: "critico", alerts: [{ metric: "DJ" }] } },
     ]);
     const { context } = renderizar();
     await screen.findByText("Nenhum relatório gerado ainda para este paciente.");

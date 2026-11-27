@@ -62,10 +62,14 @@ const LlmKeyDialog = ({ open, onClose }) => {
 
   const handleSave = (event) => {
     event.preventDefault();
-    runAction(() => saveLlmKey(apiKey.trim()));
+    // runAction já trata o erro internamente (notificação), então a promise
+    // pode ser ignorada explicitamente.
+    void runAction(() => saveLlmKey(apiKey.trim()));
   };
 
-  const handleRemove = () => runAction(deleteLlmKey);
+  const handleRemove = () => {
+    void runAction(deleteLlmKey);
+  };
 
   const renderStatus = () => {
     if (loadingStatus || !status) {

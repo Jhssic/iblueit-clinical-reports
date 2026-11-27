@@ -100,7 +100,7 @@ module.exports = async function generateClinicalReport(context, req) {
     const clinicalMetrics = require('../shared/clinicalMetrics');
     const { evaluateAlerts } = require('../shared/alertEvaluation');
     const llmKeyCrypto = require('../shared/llmKeyCrypto');
-  const { computePatientStatus } = require('../shared/patientStatus');
+    const { computePatientStatus } = require('../shared/patientStatus');
 
     // --- Autenticação (gameToken) ---
     const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);

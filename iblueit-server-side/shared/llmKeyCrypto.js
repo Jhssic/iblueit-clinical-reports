@@ -8,7 +8,7 @@
 // GCM é autenticado: se o valor salvo for adulterado (ou a chave mestra
 // mudar), o decrypt falha em vez de devolver lixo.
 
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_BYTES = 12; // tamanho recomendado de IV para GCM

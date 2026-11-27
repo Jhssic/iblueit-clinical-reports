@@ -260,7 +260,7 @@ exports.saveLlmApiKeyValidator = (saveLlmApiKeyReq) => {
     // Não amarra a um prefixo (gsk_ do Groq) pra não travar troca de provedor;
     // só garante um texto de tamanho plausível e sem espaços.
     let rules = {
-        apiKey: ['required', 'string', 'min:20', 'max:256', 'regex:/^\\S+$/'],
+        apiKey: ['required', 'string', 'min:20', 'max:256', String.raw`regex:/^\S+$/`],
     };
 
     let validation = new Validator(saveLlmApiKeyReq, rules);

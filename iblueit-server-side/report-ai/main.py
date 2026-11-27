@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Header
 from pydantic import BaseModel
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 import narrative
 import anomaly_detection
@@ -41,7 +41,7 @@ def health():
 @app.post("/generate-report")
 def generate_report(
     req: GenerateReportRequest,
-    x_llm_api_key: Optional[str] = Header(default=None),
+    x_llm_api_key: Annotated[Optional[str], Header()] = None,
 ):
     # X-LLM-Api-Key: chave própria do fisioterapeuta, repassada pela Azure
     # Function. Sem ela, vale a GROQ_API_KEY do ambiente (ou o template).
