@@ -410,6 +410,25 @@ def test_generate_com_chave_delega_para_llm(monkeypatch):
     assert chamado["api_key"] == "fake-key"
 
 
+def test_generate_chave_do_fisioterapeuta_tem_prioridade_sobre_a_do_ambiente(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "chave-do-servidor")
+    chamado = {}
+
+    def _fake_llm(payload, api_key):
+        chamado["api_key"] = api_key
+        return {"generatedBy": "llm"}
+
+    monkeypatch.setattr(narrative, "_generate_via_llm", _fake_llm)
+    narrative.generate({"currentMetrics": {}}, api_key="chave-do-fisio")
+    assert chamado["api_key"] == "chave-do-fisio"
+
+
+def test_generate_chave_do_fisioterapeuta_funciona_sem_chave_no_ambiente(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setattr(narrative, "_generate_via_llm", lambda payload, api_key: {"generatedBy": "llm", "k": api_key})
+    assert narrative.generate({"currentMetrics": {}}, api_key="chave-do-fisio") == {"generatedBy": "llm", "k": "chave-do-fisio"}
+
+
 def test_generate_sem_chave_relatorio_seguinte_inclui_evolucao(monkeypatch):
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     result = narrative.generate(

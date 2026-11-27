@@ -14,6 +14,7 @@ import math
 import os
 import re
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -460,14 +461,17 @@ def _build_dados_brutos(current_metrics, metric_sources, device=None):
     return linhas
 
 
-def generate(payload: dict) -> dict:
+def generate(payload: dict, api_key: Optional[str] = None) -> dict:
     """Gera o relatório narrativo a partir das métricas já extraídas do MongoDB.
 
     `payload` segue o formato montado pela Azure Function GenerateClinicalReport:
     device, period, sessionCount, isFirstReport, currentMetrics, initialMetrics,
     metricSources, missingOptionalFields, patientContext, alerts.
+
+    `api_key` é a chave própria do fisioterapeuta (header X-LLM-Api-Key). Ordem
+    de prioridade: chave do fisioterapeuta → GROQ_API_KEY do ambiente → template.
     """
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key = api_key or os.environ.get("GROQ_API_KEY")
     if api_key:
         return _generate_via_llm(payload, api_key)
     return _build_template_report(payload)
@@ -526,7 +530,7 @@ def _strip_markdown_fence(text: str) -> str:
     return text
 
 
-def _build_llm_prompt(payload: dict) -> str:
+,def _build_llm_prompt(payload: dict) -> str:
     """Monta o prompt clínico enviado ao LLM a partir do payload do relatório."""
     device = payload.get("device", "Pitaco")
     period = payload.get("period") or {}

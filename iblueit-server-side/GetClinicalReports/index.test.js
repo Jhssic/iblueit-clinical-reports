@@ -50,7 +50,21 @@ describe('GetClinicalReports', () => {
         expect(ClinicalReportModel.find).toHaveBeenCalledWith({ pacientId: 'pac-1', archived: false });
         expect(q.sort).toHaveBeenCalledWith({ created_at: -1 });
         expect(context.res.status).toBe(200);
-        expect(context.res.body.data).toBe(relatorios);
+        expect(context.res.body.data).toEqual([
+            { _id: 'r2', status: 'estavel' },
+            { _id: 'r1', status: 'estavel' },
+        ]);
+    });
+
+    test('RF09: devolve o status salvo e calcula o dos relatórios antigos sem status', async () => {
+        const salvo = { _id: 'r3', status: 'atencao', alerts: [{ metric: 'DJ' }] };
+        const antigo = { _id: 'r2', alerts: [{ metric: 'DJ' }] };
+        const documento = { toObject: () => ({ _id: 'r1', alerts: [] }) };
+        ClinicalReportModel.find.mockReturnValue(query([salvo, antigo, documento]));
+
+        const context = await run();
+
+        expect(context.res.body.data.map((r) => r.status)).toEqual(['atencao', 'critico', 'estavel']);
     });
 
     test('filtra arquivados e por intervalo de datas', async () => {

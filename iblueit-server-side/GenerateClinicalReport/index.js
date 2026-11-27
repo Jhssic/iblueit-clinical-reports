@@ -40,16 +40,38 @@ async function loadComparisonMetrics(clinicalMetrics, mongoose, ClinicalReportMo
 // uma segunda tentativa logo em seguida normalmente já encontra ele pronto.
 // As tentativas são sequenciais por definição (retry), por isso o await no loop.
 // Retorna { ok: true, data } no sucesso, ou { ok: false } se todas as tentativas falharem.
-async function requestReportFromAI(axios, iaPayload, context) {
+// `llmApiKey` (opcional) é a chave própria do fisioterapeuta: vai no header
+// X-LLM-Api-Key (não no corpo, pra não aparecer em log de payload). Sem ela,
+// o report-ai usa a GROQ_API_KEY do servidor ou, na falta, o template.
+async function requestReportFromAI(axios, iaPayload, context, llmApiKey) {
+    const options = { timeout: 60000 };
+    if (llmApiKey) {
+        options.headers = { 'X-LLM-Api-Key': llmApiKey };
+    }
     for (let attempt = 1; attempt <= IA_MAX_ATTEMPTS; attempt++) {
         try {
-            const apiRes = await axios.post(`${process.env.URL_API_IA}/generate-report`, iaPayload, { timeout: 60000 });
+            const apiRes = await axios.post(`${process.env.URL_API_IA}/generate-report`, iaPayload, options);
             return { ok: true, data: apiRes.data };
         } catch (iaErr) {
             context.log(`[URL_API_IA] - ERROR (tentativa ${attempt}/${IA_MAX_ATTEMPTS}): `, iaErr.message);
         }
     }
     return { ok: false };
+}
+
+// Chave de IA própria do fisioterapeuta (ver ManageLlmApiKey), já
+// descriptografada. Se não houver chave, ou se ela não puder ser lida
+// (segredo do servidor ausente/trocado), segue sem ela — o relatório
+// continua sendo gerado com a configuração padrão do servidor.
+function resolveUserLlmKey(llmKeyCrypto, requestingUser, context) {
+    const encrypted = requestingUser.llmApiKey?.encrypted;
+    if (!encrypted) return null;
+    try {
+        return llmKeyCrypto.decrypt(encrypted);
+    } catch (err) {
+        context.log(`[GenerateClinicalReport] - Não foi possível ler a chave de IA do usuário ${requestingUser._id}: ${err.message}`);
+        return null;
+    }
 }
 
 module.exports = async function generateClinicalReport(context, req) {
@@ -77,6 +99,8 @@ module.exports = async function generateClinicalReport(context, req) {
     const validations = require('../shared/Validators');
     const clinicalMetrics = require('../shared/clinicalMetrics');
     const { evaluateAlerts } = require('../shared/alertEvaluation');
+    const llmKeyCrypto = require('../shared/llmKeyCrypto');
+  const { computePatientStatus } = require('../shared/patientStatus');
 
     // --- Autenticação (gameToken) ---
     const isVerifiedGameToken = await utils.verifyGameToken(req.headers.gametoken, mongoose);
@@ -205,7 +229,8 @@ module.exports = async function generateClinicalReport(context, req) {
         };
 
         // --- RF05 / FA03: chamada à API de IA (ver requestReportFromAI) ---
-        const iaResult = await requestReportFromAI(axios, iaPayload, context);
+        const userLlmKey = resolveUserLlmKey(llmKeyCrypto, requestingUser, context);
+        const iaResult = await requestReportFromAI(axios, iaPayload, context, userLlmKey);
         if (!iaResult.ok) {
             context.res = {
                 status: 503,
@@ -215,7 +240,8 @@ module.exports = async function generateClinicalReport(context, req) {
             return;
         }
         const iaResponse = iaResult.data;
-
+        const status = computePatientStatus({ alerts: alertsTriggered, currentMetrics: current.metrics, previousMetrics });
+      
         const savedReport = await new ClinicalReportModel({
             pacientId,
             device,
@@ -234,11 +260,12 @@ module.exports = async function generateClinicalReport(context, req) {
             avisosCoerencia: iaResponse.avisosCoerencia,
             missingOptionalFields,
             alerts: alertsTriggered,
+            status,
             generatedByUserId: String(requestingUser._id),
         }).save();
 
         // --- RF12: log de auditoria ---
-        context.log(`[AUDIT] ClinicalReport ${savedReport._id} gerado para paciente ${pacientId} por usuário ${requestingUser._id} em ${new Date().toISOString()}`);
+        context.log(`[AUDIT] ClinicalReport ${savedReport._id} gerado para paciente ${pacientId} por usuário ${requestingUser._id} em ${new Date().toISOString()} (chave de IA: ${userLlmKey ? 'própria do profissional' : 'padrão do servidor'})`);
 
         // Os registros de alerta são independentes entre si (cada um só
         // referencia o relatório já salvo), então podem ser gravados em paralelo.

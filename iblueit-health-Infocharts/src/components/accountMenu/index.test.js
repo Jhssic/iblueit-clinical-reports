@@ -3,6 +3,9 @@ import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { Routes, Route } from "react-router-dom";
 import AccountMenu from "./index";
 import { renderWithProviders, salvarCredenciais } from "../../testUtils/renderWithProviders";
+import { fetchLlmKeyStatus } from "../../services/api/llmApiKey";
+
+jest.mock("../../services/api/llmApiKey");
 
 const renderizar = () =>
   renderWithProviders(
@@ -34,6 +37,18 @@ describe("<AccountMenu /> (menu da conta do usuário)", () => {
     fireEvent.click(screen.getByLabelText("conta do usuário atual"));
     expect(screen.getByText("Sair")).toBeVisible();
     expect(screen.queryByText("Código de Envio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Chave de IA")).not.toBeInTheDocument();
+  });
+
+  it("fisioterapeuta vê a opção Chave de IA e abre o diálogo de configuração", async () => {
+    fetchLlmKeyStatus.mockResolvedValue({ configured: false, last4: null, updatedAt: null });
+    salvarCredenciais({ fullname: "Dra. Ana", role: "Therapist" });
+    renderizar();
+    fireEvent.click(screen.getByLabelText("conta do usuário atual"));
+    expect(screen.queryByText("Código de Envio")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Chave de IA"));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByText(/Nenhuma chave própria configurada/)).toBeInTheDocument();
   });
 
   it("administrador vê o link de Código de Envio e navega até ele", async () => {

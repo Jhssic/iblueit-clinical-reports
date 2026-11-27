@@ -40,6 +40,8 @@ const ClinicalReportSchema = mongoose.Schema({
         condition: { type: String },
         triggerValue: { type: Number },
     }],
+    // RF09: status clínico calculado na geração (shared/patientStatus.js).
+    status: { type: String, enum: ['critico', 'atencao', 'estavel'] },
     archived: { type: Boolean, default: false },
     generatedByUserId: { type: String },
 },
