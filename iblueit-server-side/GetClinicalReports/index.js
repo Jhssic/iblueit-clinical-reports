@@ -49,8 +49,8 @@ module.exports = async function getClinicalReports(context, req) {
     // fuso do servidor (UTC na Azure = 21h do dia anterior em Brasília).
     // Offset fixo -03:00: o Brasil não tem horário de verão desde 2019.
     const { dataIni, dataFim } = req.query;
-    const invalidDate = [dataIni, dataFim].find((d) => d && !DATE_ONLY.test(d));
-    if (invalidDate) {
+    const hasInvalidDate = [dataIni, dataFim].some((d) => d && !DATE_ONLY.test(d));
+    if (hasInvalidDate) {
         context.res = { status: 400, body: utils.createResponse(false, true, "Datas devem estar no formato AAAA-MM-DD.", null, 2) };
         context.done();
         return;

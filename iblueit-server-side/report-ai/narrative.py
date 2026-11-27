@@ -8,6 +8,7 @@ automaticamente para a chamada real ao modelo via Groq, mantendo o
 mesmo formato de resposta — nenhuma outra camada do sistema precisa mudar.
 """
 
+import json
 import logging
 import math
 import os
@@ -525,14 +526,8 @@ def _strip_markdown_fence(text: str) -> str:
     return text
 
 
-def _generate_via_llm(payload: dict, api_key: str) -> dict:
-    """Chamada real ao LLM via Groq (API compatível com OpenAI).
-    Usada automaticamente quando GROQ_API_KEY está configurada no ambiente."""
-    from openai import OpenAI
-
-    model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
-    client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
-
+def _build_llm_prompt(payload: dict) -> str:
+    """Monta o prompt clínico enviado ao LLM a partir do payload do relatório."""
     device = payload.get("device", "Pitaco")
     period = payload.get("period") or {}
     session_count = payload.get("sessionCount", 0)
@@ -541,11 +536,10 @@ def _generate_via_llm(payload: dict, api_key: str) -> dict:
     current_metrics = _round_borg(payload.get("currentMetrics") or {})
     initial_metrics = None if is_first_report else _round_borg(payload.get("initialMetrics"))
     patient_context = payload.get("patientContext") or {}
-    metric_sources = payload.get("metricSources") or {}
     alerts = payload.get("alerts") or []
     alertas_txt = "\n".join(f"- {describe_alert(a)}" for a in alerts) if alerts else "nenhum"
 
-    prompt = f"""Você é um assistente clínico que auxilia fisioterapeutas respiratórios a
+    return f"""Você é um assistente clínico que auxilia fisioterapeutas respiratórios a
 interpretar dados do exergame I Blue It. Gere um relatório clínico narrativo em português,
 objetivo e profissional, com base nestes dados:
 
@@ -580,13 +574,10 @@ Responda em JSON com as chaves: resumoSessao (2-3 parágrafos), evolucao
 variáveis DJ, PJ, CGc, FR, PEmax, PImax e EB; ou null se este for o primeiro
 relatório do paciente)."""
 
-    def _fallback_template():
-        # Groq indisponível, resposta não-JSON, ou qualquer outra falha na
-        # chamada ao LLM — cai pro template determinístico em vez de estourar
-        # erro genérico lá no Node (modelos gratuitos/menores são instáveis).
-        return _build_template_report(payload)
 
-    import json as _json
+def _call_llm(client, model: str, prompt: str, api_key: str):
+    """Chama o LLM e devolve a resposta já parseada como dict, ou None em
+    qualquer falha (rede, chave, cota, resposta não-JSON)."""
     try:
         response = client.chat.completions.create(
             model=model,
@@ -599,8 +590,7 @@ relatório do paciente)."""
         response_text = response.choices[0].message.content.strip()
         # Alguns modelos embrulham a resposta em um bloco markdown (```json ... ```)
         # mesmo quando instruídos a responder só em JSON — remove o fence antes de parsear.
-        response_text = _strip_markdown_fence(response_text)
-        parsed = _json.loads(response_text)
+        return json.loads(_strip_markdown_fence(response_text))
     except Exception as exc:
         # Sem log, uma chave inválida ou o Groq fora do ar passavam
         # despercebidos (todo relatório saía do template sem ninguém saber).
@@ -611,35 +601,66 @@ relatório do paciente)."""
             type(exc).__name__,
             mensagem,
         )
-        return _fallback_template()
-
-    def _coerce_text(value):
-        # Modelos pequenos às vezes devolvem um objeto/lista em vez de texto
-        # puro nessas chaves, mesmo instruídos a responder em string — sem
-        # isso quebraria a checagem de coerência e a renderização no front.
-        if value is None or isinstance(value, str):
-            return value
-        return _json.dumps(value, ensure_ascii=False)
-
-    def _get_first(d, keys):
-        # Modelo às vezes usa uma chave parecida mas não exatamente a pedida.
-        for key in keys:
-            value = d.get(key)
-            if value:
-                return value
         return None
 
-    resumo_llm = _coerce_text(_get_first(parsed, ["resumoSessao", "resumo_sessao", "resumo", "summary"]))
-    evolucao_llm = _coerce_text(
+
+def _coerce_text(value):
+    """Modelos pequenos às vezes devolvem um objeto/lista em vez de texto puro
+    nessas chaves, mesmo instruídos a responder em string — sem isso quebraria
+    a checagem de coerência e a renderização no front."""
+    if value is None or isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _get_first(d, keys):
+    """Modelo às vezes usa uma chave parecida mas não exatamente a pedida."""
+    for key in keys:
+        value = d.get(key)
+        if value:
+            return value
+    return None
+
+
+def _extract_llm_texts(parsed):
+    """Extrai (resumo, evolução) da resposta do LLM, tolerando variações de chave."""
+    if not isinstance(parsed, dict):
+        return None, None
+    resumo = _coerce_text(_get_first(parsed, ["resumoSessao", "resumo_sessao", "resumo", "summary"]))
+    evolucao = _coerce_text(
         _get_first(parsed, ["evolucao", "evolução", "analiseComparativa", "analise_comparativa", "comparativeAnalysis"])
     )
+    return resumo, evolucao
 
+
+def _generate_via_llm(payload: dict, api_key: str) -> dict:
+    """Chamada real ao LLM via Groq (API compatível com OpenAI).
+    Usada quando há chave de API disponível. Qualquer falha (Groq
+    indisponível, resposta não-JSON, JSON sem resumo) cai no template
+    determinístico em vez de estourar erro genérico lá no Node — modelos
+    gratuitos/menores são instáveis."""
+    from openai import OpenAI
+
+    model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
+    client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
+
+    device = payload.get("device", "Pitaco")
+    is_first_report = payload.get("isFirstReport", False)
+    current_metrics = _round_borg(payload.get("currentMetrics") or {})
+    initial_metrics = None if is_first_report else _round_borg(payload.get("initialMetrics"))
+    metric_sources = payload.get("metricSources") or {}
+
+    parsed = _call_llm(client, model, _build_llm_prompt(payload), api_key)
+    if parsed is None:
+        return _build_template_report(payload)
+
+    resumo_llm, evolucao_llm = _extract_llm_texts(parsed)
     if not resumo_llm:
         # JSON válido, mas sem o conteúdo esperado (ex: chaves erradas, campos
         # vazios) — trata como falha e cai pro template em vez de salvar um
         # relatório sem resumo nenhum.
         logger.warning("Resposta do LLM sem resumoSessao — usando o template determinístico.")
-        return _fallback_template()
+        return _build_template_report(payload)
 
     if is_first_report:
         # RN06: no primeiro relatório não há com o que comparar — usa sempre o
