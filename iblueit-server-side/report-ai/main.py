@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
 
 import narrative
 import anomaly_detection
@@ -23,6 +23,11 @@ class GenerateReportRequest(BaseModel):
     isFirstReport: bool = False
     currentMetrics: dict
     previousMetrics: Optional[dict] = None
+    # Pydantic descarta campos não declarados: sem estes dois, a avaliação
+    # inicial nunca chegava em narrative.generate e a "Evolução" nunca era
+    # calculada; o mesmo com os campos opcionais ausentes (FA02).
+    initialMetrics: Optional[dict] = None
+    missingOptionalFields: list = []
     metricSources: dict = {}
     patientContext: dict = {}
     alerts: list = []
@@ -41,8 +46,10 @@ def generate_report(req: GenerateReportRequest):
 class DetectAnomalyRequest(BaseModel):
     values: list[float]
     contamination: float = 0.15
+    # Sentido clínico de "piora" da métrica — ver anomaly_detection.detect_anomaly.
+    direction: Literal["lower_is_worse", "higher_is_worse"] = "lower_is_worse"
 
 
 @app.post("/detect-anomaly")
 def detect_anomaly(req: DetectAnomalyRequest):
-    return anomaly_detection.detect_anomaly(req.values, req.contamination)
+    return anomaly_detection.detect_anomaly(req.values, req.contamination, req.direction)

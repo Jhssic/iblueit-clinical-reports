@@ -40,10 +40,10 @@ module.exports = async function deletePacient(context, req) {
     let isValidPacientId = /^[a-fA-F0-9]{24}$/.test(req.params.pacientId);
     if (!isValidPacientId) {
         context.res = {
-            status: 404,
+            status: 400,
             body: utils.createResponse(false,
                 false,
-                "Parâmetros de inválidos.",
+                "Parâmetros inválidos.",
                 null,
                 300)
         }

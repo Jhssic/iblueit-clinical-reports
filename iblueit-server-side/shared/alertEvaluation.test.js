@@ -45,6 +45,28 @@ describe('evaluateConsecutiveDrop', () => {
     });
 });
 
+describe('sentido clínico invertido para EB (maior = pior)', () => {
+    test('deterioração consecutiva: Borg subindo dispara, Borg caindo não', () => {
+        const subindo = [{ v: 6 }, { v: 5 }, { v: 4 }];
+        const caindo = [{ v: 2 }, { v: 4 }, { v: 6 }];
+        expect(evaluateConsecutiveDrop(subindo, 'v', 3, true)).toBe(true);
+        expect(evaluateConsecutiveDrop(caindo, 'v', 3, true)).toBe(false);
+        // e o oposto para métrica "maior é melhor"
+        expect(evaluateConsecutiveDrop(caindo, 'v', 3)).toBe(true);
+    });
+
+    test('variação percentual: aumento de Borg dispara, queda não', () => {
+        expect(evaluatePercentDrop([{ v: 6 }, { v: 3 }], 'v', 50, true)).toBe(true); // +100%
+        expect(evaluatePercentDrop([{ v: 2 }, { v: 4 }], 'v', 10, true)).toBe(false); // -50%: melhora
+    });
+
+    test('"Abaixo do valor" em EB vale como acima do valor (lado clinicamente ruim)', () => {
+        expect(evaluateBelowValue([{ v: 7 }], 'v', 5, true)).toBe(true);
+        expect(evaluateBelowValue([{ v: 2 }], 'v', 5, true)).toBe(false);
+        expect(evaluateBelowValue([{ v: 5 }], 'v', 5, true)).toBe(false);
+    });
+});
+
 describe('evaluatePercentDrop', () => {
     test('dispara quando a queda percentual atinge o limiar', () => {
         const sessions = [{ v: 50 }, { v: 100 }]; // caiu 50%
@@ -121,7 +143,35 @@ describe('evaluateAlerts', () => {
         expect(qBelow.limit).toHaveBeenCalledWith(1);
         // FR não tem campo mapeado — não consulta sessões pra ele
         expect(PlataformOverviewModel.find).toHaveBeenCalledTimes(2);
-        expect(triggered).toEqual([{ metric: 'PJ', condition: 'Queda percentual >', triggerValue: 20 }]);
+        // EB "Abaixo do valor" 3 com Borg 5: no sentido clínico (acima = pior) dispara
+        expect(triggered).toEqual([
+            { metric: 'PJ', condition: 'Queda percentual >', triggerValue: 20 },
+            { metric: 'EB', condition: 'Abaixo do valor', triggerValue: 3 },
+        ]);
+    });
+
+    test('RF09: só considera sessões até o fim do período do relatório', async () => {
+        AlertCriteriaModel.find.mockResolvedValue([]);
+        PlataformOverviewModel.find.mockReturnValue(query([]));
+        const periodEnd = new Date('2024-01-31T23:59:59.999Z');
+
+        await evaluateAlerts('pac-1', 'Pitaco', mongoose, undefined, periodEnd);
+
+        expect(PlataformOverviewModel.find).toHaveBeenCalledWith({
+            pacientId: 'pac-1', gameDevice: 'Pitaco', playFinish: { $lte: periodEnd },
+        });
+    });
+
+    test('EB: deterioração consecutiva = Borg subindo (sessões fictícias, critério do paciente)', async () => {
+        AlertCriteriaModel.find.mockResolvedValue([
+            { metric: 'EB', condition: 'Deterioração consecutiva', triggerValue: 3 },
+        ]);
+        // mais recente primeiro: 7, 5, 3 — esforço percebido subindo = piora
+        PlataformOverviewModel.find.mockReturnValue(query([7, 5, 3].map((BorgScale) => ({ BorgScale }))));
+
+        const triggered = await evaluateAlerts('pac-1', 'Pitaco', mongoose);
+
+        expect(triggered).toEqual([{ metric: 'EB', condition: 'Deterioração consecutiva', triggerValue: 3 }]);
     });
 
     test('Anomalia (IA): envia o histórico em ordem cronológica pro report-ai e dispara quando há anomalia', async () => {
@@ -137,7 +187,7 @@ describe('evaluateAlerts', () => {
         expect(q.limit).toHaveBeenCalledWith(30);
         expect(axios.post).toHaveBeenCalledWith(
             'http://ia.local/detect-anomaly',
-            { values: [0.9, 0.1], contamination: 0.1 },
+            { values: [0.9, 0.1], contamination: 0.1, direction: 'lower_is_worse' },
             { timeout: 10000 }
         );
         expect(triggered).toHaveLength(1);
@@ -168,6 +218,8 @@ describe('evaluateAlerts', () => {
         const triggered = await evaluateAlerts('pac-1', 'Pitaco', mongoose, context);
 
         expect(axios.post.mock.calls[0][1].contamination).toBe(0.01);
+        // EB: maior é pior — o modelo só deve sinalizar desvios pra cima
+        expect(axios.post.mock.calls[0][1].direction).toBe('higher_is_worse');
         expect(triggered).toEqual([]);
         expect(context.log).toHaveBeenCalledWith(expect.stringContaining('[ANOMALY_IA] - ERROR'));
         expect(context.log.mock.calls[0][0]).toContain('timeout');

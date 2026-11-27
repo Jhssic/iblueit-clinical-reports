@@ -205,10 +205,29 @@ exports.generateClinicalReportValidator = (generateClinicalReportReq) => {
     return validation;
 }
 
+// Faixa válida de triggerValue por condição (RF10). Só "numérico" não basta:
+// "Deterioração consecutiva" com 0 ou 1 dispara sempre e com 2.5 nunca; um
+// percentual/sensibilidade fora de 1..100 não tem significado. A UI oferece
+// 2–6 sessões para a deterioração consecutiva.
+const TRIGGER_VALUE_RULES = {
+    'Deterioração consecutiva': {
+        valid: (v) => Number.isInteger(v) && v >= 2,
+        message: 'Para "Deterioração consecutiva", o valor deve ser um número inteiro de sessões maior ou igual a 2.',
+    },
+    'Queda percentual >': {
+        valid: (v) => v >= 1 && v <= 100,
+        message: 'Para "Queda percentual >", o valor deve ser um percentual entre 1 e 100.',
+    },
+    'Anomalia (IA)': {
+        valid: (v) => v >= 1 && v <= 100,
+        message: 'Para "Anomalia (IA)", a sensibilidade deve estar entre 1 e 100.',
+    },
+};
+
 exports.saveAlertCriteriaValidator = (saveAlertCriteriaReq) => {
 
     let rules = {
-        criteria: 'array',
+        criteria: 'required|array',
         'criteria.*.metric': ['required', { 'in': ['DJ', 'PJ', 'EB'] }],
         'criteria.*.condition': ['required', { 'in': ['Deterioração consecutiva', 'Queda percentual >', 'Abaixo do valor', 'Anomalia (IA)'] }],
         'criteria.*.triggerValue': 'required|numeric',
@@ -216,6 +235,21 @@ exports.saveAlertCriteriaValidator = (saveAlertCriteriaReq) => {
 
     let validation = new Validator(saveAlertCriteriaReq, rules);
     validation.check();
+
+    // Regra condicional (depende da condition de cada critério), que o
+    // validatorjs não expressa direto — os erros entram no mesmo objeto, no
+    // mesmo formato (errorCount / errors.errors) que os handlers já esperam.
+    const criteria = Array.isArray(saveAlertCriteriaReq?.criteria) ? saveAlertCriteriaReq.criteria : [];
+    criteria.forEach((criterion, i) => {
+        const attribute = `criteria.${i}.triggerValue`;
+        const rule = TRIGGER_VALUE_RULES[criterion?.condition];
+        if (!rule || validation.errors.has(attribute)) return;
+        const value = Number(criterion.triggerValue);
+        if (!rule.valid(value)) {
+            validation.errors.add(attribute, rule.message);
+            validation.errorCount++;
+        }
+    });
 
     return validation;
 }

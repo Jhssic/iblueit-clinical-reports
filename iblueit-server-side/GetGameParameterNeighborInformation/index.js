@@ -45,24 +45,33 @@ module.exports = async function getGameParameterNeighborInformation(context, req
                 pacientId: pacientId
             }
         };
+        // Antes, a resposta de erro/vazio era enviada dentro do .then/.catch e o
+        // handler continuava executando: com falha na IA estourava TypeError
+        // (lista indefinida) e, sem vizinhos, sobrescrevia a resposta com uma
+        // "média" de zero itens (NaN). Agora cada caso retorna na hora.
         let neighborsPacientReturn;
-        await axios(config).then(function (response) {
-            neighborsPacientReturn = response.data.neighborsPacientReturn
-            if (!neighborsPacientReturn.length > 0) {
-                context.res = {
-                    status: 200,
-                    body: utils.createResponse(false, false, "Não Foi encontrados Vizinhos", null, 1)
-                }
-                context.done();
-            }
-        }).catch(function (error) {
-            console.log(error);
+        try {
+            const response = await axios(config);
+            neighborsPacientReturn = response.data.neighborsPacientReturn || [];
+        } catch (error) {
+            context.log("[GetGameParameterNeighborInformation] - ERROR: ", error.message);
+            // 502 (Bad Gateway): a falha foi no serviço externo (URL_API_IA),
+            // não na requisição do cliente.
             context.res = {
-                status: 400,
-                body: utils.createResponse(false, false, "Erro na Requisição", null, 1)
+                status: 502,
+                body: utils.createResponse(false, true, "Não foi possível consultar os pacientes semelhantes. Tente novamente.", null, null)
             }
             context.done();
-        });
+            return;
+        }
+        if (neighborsPacientReturn.length === 0) {
+            context.res = {
+                status: 200,
+                body: utils.createResponse(true, true, "Nenhum paciente semelhante encontrado.", [], null)
+            }
+            context.done();
+            return;
+        }
         const neighborsPacientIds = neighborsPacientReturn.map((neighborsPacient) => neighborsPacient.pacientId)
         const arrayConfigurations = []
         const GameParameters = await GameParameterModel.find({ "pacientId": neighborsPacientIds });
@@ -71,7 +80,7 @@ module.exports = async function getGameParameterNeighborInformation(context, req
             arrayConfigurations.push({
                 "stageId": getFloat(GameParameter.stageId),
                 "phase": getFloat(GameParameter.phase),
-                "level": getFloat(GameParameter.phase),
+                "level": getFloat(GameParameter.level),
                 "pacientId": GameParameter.pacientId,
                 "pacientName": neighborsPacientReturn.find(neighborsPacient => neighborsPacient.pacientId === GameParameter.pacientId).pacientName,
                 "ObjectSpeedFactor": getFloat(GameParameter.ObjectSpeedFactor),

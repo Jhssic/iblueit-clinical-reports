@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import Box from "@mui/material/Box";
@@ -49,7 +49,6 @@ import {
 } from "recharts";
 
 import { useMyContext } from "../../providers/MyContext";
-import { pathRoutes } from "../../providers/Routes";
 import { getTokenParameters } from "../../providers/sessionStorage";
 import {
   generateClinicalReport,
@@ -58,6 +57,8 @@ import {
   fetchGameParameterSeries,
   fetchPacientProfile,
   buildPeriodFromPreset,
+  getPresetRange,
+  isValidCustomPeriod,
   PERIOD_PRESETS,
   fetchAlertCriteria,
   saveAlertCriteria,
@@ -65,6 +66,7 @@ import {
   deleteClinicalReport,
 } from "../../services/api/clinicalReport";
 import { fetchAll as fetchAllPatients } from "../../services/api/patient";
+import { translateSex, translateCondition, translateRole } from "../../utils/patientLabels";
 
 // ─── Estilos reutilizáveis ────────────────────────────────────────────────────
 
@@ -143,18 +145,31 @@ const describeMissingFields = (missingFields) => {
   return linhas;
 };
 
+// EB (Escala de Borg): valor maior = mais esforço = piora. O back-end avalia
+// as condições de EB pelo lado clinicamente ruim (aumento em vez de queda,
+// acima em vez de abaixo — ver shared/alertEvaluation.js), então o texto
+// precisa acompanhar.
+const LOWER_IS_BETTER_METRICS = new Set(["EB"]);
+
 const describeAlert = (a) => {
   const label = METRIC_LABELS[a.metric] || a.metric;
+  const inverted = LOWER_IS_BETTER_METRICS.has(a.metric);
   if (a.condition === "Queda percentual >") {
-    return `${label}: queda percentual maior que ${a.triggerValue}% entre as duas últimas sessões.`;
+    return inverted
+      ? `${label}: aumento percentual maior que ${a.triggerValue}% entre as duas últimas sessões.`
+      : `${label}: queda percentual maior que ${a.triggerValue}% entre as duas últimas sessões.`;
   }
   if (a.condition === "Abaixo do valor") {
-    return `${label}: abaixo de ${a.triggerValue} na última sessão.`;
+    return inverted
+      ? `${label}: acima de ${a.triggerValue} na última sessão.`
+      : `${label}: abaixo de ${a.triggerValue} na última sessão.`;
   }
   if (a.condition === "Anomalia (IA)") {
     return `${label}: sessão identificada como anômala pelo modelo de IA (sensibilidade ${a.triggerValue}%).`;
   }
-  return `${label}: deterioração consecutiva em ${a.triggerValue} sessões.`;
+  return inverted
+    ? `${label}: piora consecutiva (aumento) em ${a.triggerValue} sessões.`
+    : `${label}: deterioração consecutiva em ${a.triggerValue} sessões.`;
 };
 
 // ─── Indicador rápido de status do paciente (Estável/Atenção/Crítico) ────────
@@ -370,8 +385,8 @@ const pdfAddPeopleInfo = (doc, { patientName, pacientProfile, professionalName, 
   const patientLine = [
     patientName || "—",
     age == null ? null : `${age} anos`,
-    pacientProfile?.sex || null,
-    pacientProfile?.condition || null,
+    translateSex(pacientProfile?.sex),
+    translateCondition(pacientProfile?.condition),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -547,6 +562,33 @@ const formatRespiratoryRate = (profile, device) => {
 // identificador local (`uid`) mantém a key estável ao editar/remover itens e
 // é descartado antes de enviar à API.
 const DEFAULT_CRITERION = { metric: "DJ", condition: "Deterioração consecutiva", triggerValue: 5 };
+
+// Valor inicial do gatilho ao escolher uma condição — trocar a condição não
+// pode herdar o número da anterior (ex.: "Queda percentual > 30" virar
+// "Deterioração consecutiva" com 30 sessões, fora das opções do Select).
+const DEFAULT_TRIGGER_BY_CONDITION = {
+  "Deterioração consecutiva": DEFAULT_CRITERION.triggerValue,
+  "Queda percentual >": 20,
+  "Abaixo do valor": 0,
+  "Anomalia (IA)": 10,
+};
+
+// Mesmas regras validadas pelo backend (SaveAlertCriteria) — retorna a
+// mensagem de erro ou null quando o critério é válido.
+const validateCriterion = ({ condition, triggerValue }, idx) => {
+  const value = Number(triggerValue);
+  const prefix = `Critério ${idx + 1}: `;
+  if (triggerValue === "" || triggerValue == null || Number.isNaN(value)) {
+    return prefix + "informe um valor numérico para o gatilho.";
+  }
+  if (condition === "Deterioração consecutiva" && (!Number.isInteger(value) || value < 2)) {
+    return prefix + "deterioração consecutiva exige um número inteiro de sessões (mínimo 2).";
+  }
+  if ((condition === "Queda percentual >" || condition === "Anomalia (IA)") && (value < 1 || value > 100)) {
+    return prefix + "o percentual deve estar entre 1 e 100.";
+  }
+  return null;
+};
 let criterionSequence = 0;
 const createCriterion = ({ metric, condition, triggerValue }) => {
   criterionSequence += 1;
@@ -556,10 +598,11 @@ const toCriterionPayload = ({ metric, condition, triggerValue }) => ({ metric, c
 
 const CriterionTriggerField = ({ criterion, onChange }) => {
   if (criterion.condition === "Deterioração consecutiva") {
+    const labelId = `${criterion.uid}-gatilho-label`;
     return (
       <FormControl size="small" sx={{ minWidth: 160 }}>
-        <InputLabel>Disparar após</InputLabel>
-        <Select sx={{ color: "#11192A" }} value={criterion.triggerValue} label="Disparar após" onChange={(e) => onChange(e.target.value)}>
+        <InputLabel id={labelId}>Disparar após</InputLabel>
+        <Select labelId={labelId} id={`${criterion.uid}-gatilho`} sx={{ color: "#11192A" }} value={criterion.triggerValue} label="Disparar após" onChange={(e) => onChange(e.target.value)}>
           {[2, 3, 4, 5, 6].map((n) => (<MenuItem key={n} value={n}>{n} sessões</MenuItem>))}
         </Select>
       </FormControl>
@@ -604,17 +647,48 @@ const CriterionTriggerField = ({ criterion, onChange }) => {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
+const PATIENTS_TAB = 5;
+const LOAD_ERROR_MESSAGE = "Não foi possível carregar os dados do paciente. Verifique a conexão e tente novamente.";
+const PATIENTS_ERROR_MESSAGE = "Não foi possível carregar a lista de pacientes.";
+
+const firstDayOfMonth = () => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+};
+
+// Sessão (timestamp) que recebe o ponto vermelho no gráfico de DJ para cada
+// relatório com alerta. O alerta salvo (`report.alerts`) não diz quais sessões
+// o dispararam — o backend avalia as sessões mais recentes até o fim do
+// período do relatório. Por isso marcamos só a ÚLTIMA sessão do período (a
+// sessão em que o alerta passou a valer), e só no dispositivo do relatório,
+// comparando por timestamp completo (com ano) em vez de "DD/MM".
+const findAlertSessionTimestamps = (reportsWithAlerts, series, device) => {
+  const marked = new Set();
+  reportsWithAlerts.forEach((r) => {
+    if (!r?.alerts?.length || !r.period?.start || !r.period?.end) return;
+    if (r.device && r.device !== device) return;
+    const startTime = new Date(r.period.start).getTime();
+    const endTime = new Date(r.period.end).getTime();
+    const inPeriod = series.filter((s) => s.timestamp >= startTime && s.timestamp <= endTime);
+    if (inPeriod.length) {
+      marked.add(Math.max(...inPeriod.map((s) => s.timestamp)));
+    }
+  });
+  return marked;
+};
+
 const ClinicalReport = () => {
   const context = useMyContext();
 
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
+  // `currentReport` é o relatório mais recente do paciente (sem filtro de
+  // data) ou o que o usuário abriu pelo Histórico. `reports` é só a lista
+  // filtrada da aba Histórico — o filtro não pode esconder o relatório atual.
+  const [currentReport, setCurrentReport] = useState(null);
   const [reports, setReports] = useState([]);
-  const firstDayOfMonth = () => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  };
 
   const [historyFilter, setHistoryFilter] = useState({ dataIni: firstDayOfMonth(), dataFim: "" });
   const [showArchived, setShowArchived] = useState(false);
@@ -639,52 +713,90 @@ const ClinicalReport = () => {
 
   // Aba "Pacientes" (RF09 — indicador de alerta por paciente)
   const [patients, setPatients] = useState([]);
-
-  const currentReport = reports[0] ?? null;
-
-  // ── Carrega dados do backend ───────────────────────────────────────────────
-
-  const loadHistory = async () => {
-    if (!context.patientId) return;
-    const data = await fetchClinicalReportsHistory(context.patientId, historyFilter);
-    setReports(data);
-  };
+  const [patientsError, setPatientsError] = useState(null);
 
   // Lista separada da ativa (`reports`/`currentReport`) — arquivados nunca
   // devem aparecer como "relatório atual" nem entrar no PDF/alertas da tela.
   const [archivedReports, setArchivedReports] = useState([]);
+
+  // Trocar de paciente rápido dispara várias cargas em paralelo; uma resposta
+  // do paciente anterior que chegue depois não pode sobrescrever o atual (nem
+  // misturar nome de um com dados de outro no PDF). Toda carga guarda o id
+  // pedido e descarta o resultado se o paciente selecionado já mudou.
+  const patientIdRef = useRef(context.patientId);
+  patientIdRef.current = context.patientId;
+  const isStale = (requestedId) => patientIdRef.current !== requestedId;
+  const loadSeq = useRef(0);
+  const chartsSeq = useRef(0);
+
+  // ── Carrega dados do backend ───────────────────────────────────────────────
+
+  const loadCurrentReport = async () => {
+    const pid = context.patientId;
+    if (!pid) return;
+    const data = await fetchClinicalReportsHistory(pid, {});
+    if (isStale(pid)) return;
+    setCurrentReport(data[0] ?? null);
+  };
+
+  const loadHistory = async () => {
+    const pid = context.patientId;
+    if (!pid) return;
+    const data = await fetchClinicalReportsHistory(pid, historyFilter);
+    if (isStale(pid)) return;
+    setReports(data);
+  };
+
   const loadArchivedReports = async () => {
-    if (!context.patientId) return;
-    const data = await fetchClinicalReportsHistory(context.patientId, { archived: true });
+    const pid = context.patientId;
+    if (!pid) return;
+    const data = await fetchClinicalReportsHistory(pid, { archived: true });
+    if (isStale(pid)) return;
     setArchivedReports(data);
   };
 
   const loadCharts = async () => {
-    if (!context.patientId) return;
+    const pid = context.patientId;
+    if (!pid) return;
+    // Também protege contra trocas rápidas de dispositivo.
+    chartsSeq.current += 1;
+    const seq = chartsSeq.current;
     const [dj, cgc, profile] = await Promise.all([
-      fetchPlataformSeries(context.patientId, device),
-      fetchGameParameterSeries(context.patientId),
-      fetchPacientProfile(context.patientId),
+      fetchPlataformSeries(pid, device),
+      fetchGameParameterSeries(pid),
+      fetchPacientProfile(pid),
     ]);
+    if (isStale(pid) || seq !== chartsSeq.current) return;
     setDjSeries(dj);
     setCgcSeries(cgc);
     setPacientProfile(profile);
   };
 
   const loadCriteria = async () => {
-    if (!context.patientId) return;
-    const data = await fetchAlertCriteria(context.patientId);
-    if (data.length) {
-      setCriteria(data.map(createCriterion));
-    }
+    const pid = context.patientId;
+    if (!pid) return;
+    const data = await fetchAlertCriteria(pid);
+    if (isStale(pid)) return;
+    // Paciente sem critérios salvos volta ao padrão (RN04) — nunca herda os
+    // critérios do paciente anterior.
+    setCriteria(data.length ? data.map(createCriterion) : [createCriterion(DEFAULT_CRITERION)]);
+  };
+
+  const reportLoadError = (err) => {
+    console.error(err);
+    setLoadError(LOAD_ERROR_MESSAGE);
+    context.addNotification("error", LOAD_ERROR_MESSAGE);
   };
 
   const loadPatients = async () => {
     try {
       const result = await fetchAllPatients(context);
       setPatients(result);
+      setPatientsError(null);
     } catch (err) {
       console.error(err);
+      setPatientsError(PATIENTS_ERROR_MESSAGE);
+      context.addNotification("error", PATIENTS_ERROR_MESSAGE);
     }
   };
 
@@ -695,16 +807,52 @@ const ClinicalReport = () => {
     setTab(0);
   };
 
+  const handlePatientRowKeyDown = (event, patient) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleSelectPatient(patient);
+    }
+  };
+
+  // Recarrega relatório atual + histórico (após gerar ou para "Tentar novamente").
+  const reloadReports = async () => {
+    try {
+      await Promise.all([loadCurrentReport(), loadHistory()]);
+      setLoadError(null);
+    } catch (err) {
+      reportLoadError(err);
+    }
+  };
+
+  const handleFilterHistory = async () => {
+    try {
+      await loadHistory();
+      setLoadError(null);
+    } catch (err) {
+      reportLoadError(err);
+    }
+  };
+
   // RN05 — arquiva um relatório do histórico (nunca exclui).
   const handleArchiveReport = async (reportId) => {
     try {
       await archiveClinicalReport(context.patientId, reportId);
-      setReports(reports.filter((r) => r._id !== reportId));
-      void loadPatients();
+      setReports((prev) => prev.filter((r) => r._id !== reportId));
       context.addNotification("success", "Relatório arquivado.");
     } catch (err) {
       console.error(err);
       context.addNotification("error", "Não foi possível arquivar o relatório. Tente novamente.");
+      return;
+    }
+    // Atualizações secundárias: falha aqui é erro de carga, não de arquivamento.
+    void loadPatients();
+    const refreshes = [];
+    if (showArchived) refreshes.push(loadArchivedReports());
+    if (currentReport?._id === reportId) refreshes.push(loadCurrentReport());
+    try {
+      await Promise.all(refreshes);
+    } catch (err) {
+      reportLoadError(err);
     }
   };
 
@@ -718,7 +866,7 @@ const ClinicalReport = () => {
 
     try {
       await deleteClinicalReport(context.patientId, reportId);
-      setArchivedReports(archivedReports.filter((r) => r._id !== reportId));
+      setArchivedReports((prev) => prev.filter((r) => r._id !== reportId));
       context.addNotification("success", "Relatório excluído definitivamente.");
     } catch (err) {
       console.error(err);
@@ -735,7 +883,7 @@ const ClinicalReport = () => {
         patientName: context.patientName,
         pacientProfile,
         professionalName: getTokenParameters("fullname"),
-        professionalRole: getTokenParameters("role"),
+        professionalRole: translateRole(getTokenParameters("role")),
       });
       const sessionLabel = (currentReport.period?.label || "relatorio").replace(/[^\w-]+/g, "_");
       doc.save(`relatorio-clinico-${sessionLabel}.pdf`);
@@ -748,18 +896,39 @@ const ClinicalReport = () => {
   };
 
   const loadAll = async () => {
-    if (!context.patientId) return;
-    setLoading(true);
-    try {
-      await Promise.all([loadHistory(), loadCharts(), loadCriteria()]);
-    } catch (_err) {
-      setReports([]);
-    } finally {
+    if (!context.patientId) {
+      // Sem paciente: invalida qualquer carga em andamento do anterior.
+      loadSeq.current += 1;
       setLoading(false);
+      return;
     }
+    loadSeq.current += 1;
+    const seq = loadSeq.current;
+    setLoading(true);
+    setLoadError(null);
+    // allSettled: o que carregou com sucesso aparece mesmo se outra parte falhar.
+    const results = await Promise.allSettled([loadCurrentReport(), loadHistory(), loadCharts(), loadCriteria()]);
+    if (seq !== loadSeq.current) return; // outra carga (outro paciente) já começou
+    const failure = results.find((r) => r.status === "rejected");
+    if (failure) reportLoadError(failure.reason);
+    setLoading(false);
+  };
+
+  // Ao trocar de paciente, limpa tudo do anterior antes de carregar o novo.
+  const resetPatientData = () => {
+    setCurrentReport(null);
+    setReports([]);
+    setArchivedReports([]);
+    setDjSeries([]);
+    setCgcSeries([]);
+    setPacientProfile(null);
+    setCriteria([createCriterion(DEFAULT_CRITERION)]);
+    setGenerateError(null);
+    setLoadError(null);
   };
 
   useEffect(() => {
+    resetPatientData();
     loadAll().catch((error) => console.error(error));
   }, [context.patientId]);
 
@@ -768,52 +937,74 @@ const ClinicalReport = () => {
   }, []);
 
   useEffect(() => {
-    if (context.patientId) loadCharts().catch((error) => console.error(error));
+    if (context.patientId) loadCharts().catch(reportLoadError);
   }, [device]);
 
   useEffect(() => {
-    if (showArchived) void loadArchivedReports();
+    if (showArchived) loadArchivedReports().catch(reportLoadError);
   }, [showArchived, context.patientId]);
 
   // ── Ação: gerar relatório (RF05) ───────────────────────────────────────────
 
   const handleGenerate = async () => {
-    if (periodPreset === "personalizado" && (!customStart || !customEnd)) {
-      context.addNotification("error", "Selecione a data inicial e final.");
-      return;
-    }
-
-    setGenerating(true);
-    setGenerateError(null);
-    try {
-      const period = buildPeriodFromPreset(periodPreset, customStart, customEnd);
-      const result = await generateClinicalReport(context.patientId, { device, period });
-
-      if (!result.success) {
-        // FA01 — dados insuficientes no período selecionado
-        setGenerateError(result.message);
+    if (periodPreset === "personalizado") {
+      if (!customStart || !customEnd) {
+        context.addNotification("error", "Selecione a data inicial e final.");
         return;
       }
+      if (!isValidCustomPeriod(customStart, customEnd)) {
+        context.addNotification("error", "A data inicial deve ser anterior ou igual à data final.");
+        return;
+      }
+    }
 
-      context.addNotification("success", "Relatório clínico gerado com sucesso.");
-      await loadHistory();
-      void loadPatients();
-      setTab(0);
+    const pid = context.patientId;
+    setGenerating(true);
+    setGenerateError(null);
+    let result;
+    try {
+      const period = buildPeriodFromPreset(periodPreset, customStart, customEnd);
+      result = await generateClinicalReport(pid, { device, period });
     } catch (err) {
-      // FA03 — falha na API de IA. Mantém período/dispositivo selecionados para nova tentativa.
+      // FA01 (422 — dados insuficientes no período) e FA03 (503 — falha na API de IA):
+      // mostra a mensagem do back e mantém período/dispositivo selecionados para nova tentativa.
       const message =
         err.response?.data?.message || "Não foi possível gerar o relatório agora. Tente novamente.";
       setGenerateError(message);
-    } finally {
       setGenerating(false);
+      return;
     }
+
+    // Geração concluída — sucesso é definitivo. Se recarregar o histórico
+    // falhar depois, isso é erro de carga (com "Tentar novamente"), nunca
+    // "não foi possível gerar" (o usuário tentaria de novo e duplicaria).
+    setGenerating(false);
+    context.addNotification("success", "Relatório clínico gerado com sucesso.");
+    if (isStale(pid)) return;
+    if (result?.data?._id) setCurrentReport(result.data);
+    setTab(0);
+    void loadPatients();
+    await reloadReports();
   };
 
   const updateCriteria = (idx, field, value) => {
-    setCriteria(criteria.map((c, i) => (i === idx ? { ...c, [field]: value } : c)));
+    setCriteria(
+      criteria.map((c, i) => {
+        if (i !== idx) return c;
+        if (field === "condition" && value !== c.condition) {
+          return { ...c, condition: value, triggerValue: DEFAULT_TRIGGER_BY_CONDITION[value] };
+        }
+        return { ...c, [field]: value };
+      })
+    );
   };
 
   const handleSaveCriteria = async () => {
+    const invalid = criteria.map(validateCriterion).find(Boolean);
+    if (invalid) {
+      context.addNotification("error", invalid);
+      return;
+    }
     setSavingCriteria(true);
     try {
       await saveAlertCriteria(context.patientId, criteria.map(toCriterionPayload));
@@ -830,36 +1021,102 @@ const ClinicalReport = () => {
 
   const GRAPH_PERIOD_OPTIONS = [{ key: "todas", label: "Todo o período" }, ...PERIOD_PRESETS];
 
+  // Mesmo intervalo dos presets da geração (N dias contando hoje).
   const filterByGraphPeriod = (series) => {
     if (graphPeriod === "todas") return series;
-    const preset = PERIOD_PRESETS.find((p) => p.key === graphPeriod);
-    if (!preset) return series;
-    const cutoff = Date.now() - preset.days * 24 * 60 * 60 * 1000;
-    return series.filter((s) => s.timestamp >= cutoff);
+    if (!PERIOD_PRESETS.some((p) => p.key === graphPeriod)) return series;
+    const { start, end } = getPresetRange(graphPeriod);
+    const startTime = start.valueOf();
+    const endTime = end.valueOf();
+    return series.filter((s) => s.timestamp >= startTime && s.timestamp <= endTime);
   };
 
   const filteredDjSeries = filterByGraphPeriod(djSeries);
   const filteredCgcSeries = filterByGraphPeriod(cgcSeries);
 
-  const formatDDMM = (date) =>
-    `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
-
-  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-  const alertDates = new Set();
-  reports.forEach((r) => {
-    if (!r.alerts?.length || !r.period) return;
-    const startTime = new Date(r.period.start).getTime();
-    const endTime = new Date(r.period.end).getTime();
-    for (let t = startTime; t <= endTime; t += ONE_DAY_MS) {
-      alertDates.add(formatDDMM(new Date(t)));
-    }
-  });
+  const reportsForAlertDots = [currentReport, ...reports.filter((r) => r._id !== currentReport?._id)];
+  const alertTimestamps = findAlertSessionTimestamps(reportsForAlertDots, djSeries, device);
 
   const djDot = (props) => {
     const { cx, cy, payload } = props;
-    const isAlert = alertDates.has(payload.date);
-    return <circle key={`dj-dot-${payload.date}`} cx={cx} cy={cy} r={isAlert ? 5 : 3} fill={isAlert ? "#d32f2f" : "#1e2b48"} />;
+    const isAlert = alertTimestamps.has(payload.timestamp);
+    return <circle key={`dj-dot-${payload.timestamp}`} cx={cx} cy={cy} r={isAlert ? 5 : 3} fill={isAlert ? "#d32f2f" : "#1e2b48"} />;
   };
+
+  const retryLoadButton = (
+    <Button size="small" variant="outlined" sx={{ color: "#c62828", borderColor: "#c62828", textTransform: "none" }} onClick={() => loadAll().catch((error) => console.error(error))}>
+      Tentar novamente
+    </Button>
+  );
+
+  const patientsTabContent = (
+    <Box>
+      <Typography sx={{ fontSize: 15, fontWeight: "bold", color: "#11192A", mb: 0.5 }}>
+        Lista de pacientes
+      </Typography>
+      <Typography sx={{ fontSize: 13, color: "#9e9e9e", mb: 3 }}>
+        Clique em um paciente para abrir o relatório clínico correspondente.
+      </Typography>
+
+      {patientsError && (
+        <Paper role="alert" sx={{ backgroundColor: "#ffebee", border: "1px solid #c62828", borderRadius: 2, p: 2, mb: 2, display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+          <Typography sx={{ color: "#c62828", fontSize: 13 }}>{patientsError}</Typography>
+          <Button size="small" variant="outlined" sx={{ color: "#c62828", borderColor: "#c62828", textTransform: "none" }} onClick={() => void loadPatients()}>
+            Tentar novamente
+          </Button>
+        </Paper>
+      )}
+
+      {!patients.length && !patientsError && (
+        <Typography sx={{ color: "#9e9e9e", fontSize: 13 }}>Nenhum paciente cadastrado.</Typography>
+      )}
+      {patients.length > 0 && (
+        <TableContainer component={Paper} sx={{ backgroundColor: "white", boxShadow: 2, borderRadius: 2 }}>
+          <Table>
+            <TableHead>
+              <TableRow sx={{ backgroundColor: "#f5f7ff" }}>
+                <TableCell sx={{ fontWeight: "bold", fontSize: 13, color: "#11192A" }}>Nome</TableCell>
+                <TableCell sx={{ fontWeight: "bold", fontSize: 13, color: "#11192A" }}>Condição</TableCell>
+                <TableCell sx={{ fontWeight: "bold", fontSize: 13, color: "#11192A" }}>Status</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {patients.map((p) => (
+                <TableRow
+                  key={p.id}
+                  hover
+                  selected={p.id === context.patientId}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`Abrir relatório clínico de ${p.name}` + (getPatientStatus(p.latestReport) ? ` (status: ${getPatientStatus(p.latestReport).label})` : "")}
+                  sx={{ cursor: "pointer", "&:focus-visible": { outline: "2px solid #1e2b48", outlineOffset: -2 } }}
+                  onClick={() => handleSelectPatient(p)}
+                  onKeyDown={(e) => handlePatientRowKeyDown(e, p)}
+                >
+                  <TableCell sx={{ fontSize: 13, color: "#11192A" }}>{p.name}</TableCell>
+                  <TableCell sx={{ fontSize: 13, color: "#11192A" }}>{translateCondition(p.condition) || "—"}</TableCell>
+                  <TableCell>
+                    {(() => {
+                      const status = getPatientStatus(p.latestReport);
+                      return status ? (
+                        <Chip
+                          size="small"
+                          label={status.label}
+                          sx={{ backgroundColor: status.bg, color: status.color, fontWeight: "bold", border: `1px solid ${status.border}`, fontSize: 11 }}
+                        />
+                      ) : (
+                        <Chip size="small" label="Sem dados" sx={{ backgroundColor: "#f5f5f5", color: "#9e9e9e", fontSize: 11 }} />
+                      );
+                    })()}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Box>
+  );
 
   // ── Estados de loading / sem dados ────────────────────────────────────────
 
@@ -884,9 +1141,16 @@ const ClinicalReport = () => {
 
       {/* Breadcrumb (RF06) */}
       <Typography sx={{ fontSize: 12, color: "#758BB7", mb: 0.5 }}>
-        <a href={pathRoutes.HOME} style={{ color: "#758BB7", textDecoration: "none" }}>
+        {/* Ação do próprio router/estado (sem recarregar a página nem perder o
+            paciente selecionado): leva à aba Pacientes desta tela. */}
+        <Box
+          component="button"
+          type="button"
+          onClick={() => setTab(PATIENTS_TAB)}
+          sx={{ background: "none", border: "none", p: 0, cursor: "pointer", font: "inherit", color: "#758BB7", "&:hover": { textDecoration: "underline" } }}
+        >
           ← Pacientes
-        </a>
+        </Box>
         {context.patientName ? " › " + context.patientName + " › Relatório Clínico" : ""}
       </Typography>
 
@@ -908,9 +1172,12 @@ const ClinicalReport = () => {
       </Box>
 
       {!context.patientId && (
-        <Typography sx={{ color: "#9e9e9e", fontSize: 14 }}>
-          Selecione um paciente na barra lateral.
-        </Typography>
+        <>
+          <Typography sx={{ color: "#9e9e9e", fontSize: 14, mb: 3 }}>
+            Selecione um paciente na barra lateral.
+          </Typography>
+          {patientsTabContent}
+        </>
       )}
 
       {context.patientId && (
@@ -941,8 +1208,17 @@ const ClinicalReport = () => {
             </Tabs>
           </Paper>
 
+          {/* Falha ao carregar não pode parecer "sem relatório" */}
+          {loadError && (
+            <Paper role="alert" sx={{ backgroundColor: "#ffebee", border: "1px solid #c62828", borderRadius: 2, p: 2, mb: 2.5, display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+              <WarningAmberIcon sx={{ color: "#c62828" }} />
+              <Typography sx={{ color: "#c62828", fontSize: 13, flex: 1 }}>{loadError}</Typography>
+              {retryLoadButton}
+            </Paper>
+          )}
+
           {/* ═══ ABA 0 — Relatório atual ═══ */}
-          {tab === 0 && !currentReport && (
+          {tab === 0 && !currentReport && !loadError && (
             <Box sx={{ textAlign: "center", mt: 6 }}>
               <AssessmentIcon sx={{ fontSize: 60, color: "#ccc" }} />
               <Typography sx={{ mt: 2, color: "#9e9e9e", fontSize: 14 }}>
@@ -1189,7 +1465,7 @@ const ClinicalReport = () => {
                   value={historyFilter.dataFim}
                   onChange={(e) => setHistoryFilter({ ...historyFilter, dataFim: e.target.value })}
                 />
-                <Button variant="contained" sx={BTN} onClick={loadHistory}>Filtrar</Button>
+                <Button variant="contained" sx={BTN} onClick={handleFilterHistory}>Filtrar</Button>
                 <FormControlLabel
                   sx={{ ml: "auto" }}
                   control={<Switch checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />}
@@ -1198,7 +1474,7 @@ const ClinicalReport = () => {
               </Box>
 
               {!reports.length ? (
-                <Typography sx={{ color: "#9e9e9e", fontSize: 13 }}>Nenhum relatório gerado.</Typography>
+                !loadError && <Typography sx={{ color: "#9e9e9e", fontSize: 13 }}>Nenhum relatório gerado.</Typography>
               ) : (
                 <TableContainer component={Paper} sx={{ backgroundColor: "white", boxShadow: 2, borderRadius: 2 }}>
                   <Table>
@@ -1235,7 +1511,7 @@ const ClinicalReport = () => {
                               size="small"
                               sx={{ color: "#1e2b48", fontSize: 12, textTransform: "none" }}
                               onClick={() => {
-                                setReports([r, ...reports.filter((x) => x._id !== r._id)]);
+                                setCurrentReport(r);
                                 setTab(0);
                               }}
                             >
@@ -1308,16 +1584,16 @@ const ClinicalReport = () => {
                 <Typography sx={{ fontSize: 15, fontWeight: "bold", color: "#11192A" }}>Evolução longitudinal</Typography>
                 <Box sx={{ display: "flex", gap: 2 }}>
                   <FormControl size="small" sx={{ minWidth: 160 }}>
-                    <InputLabel>Período</InputLabel>
-                    <Select sx={{ color: "#11192A" }} value={graphPeriod} label="Período" onChange={(e) => setGraphPeriod(e.target.value)}>
+                    <InputLabel id="graficos-periodo-label">Período</InputLabel>
+                    <Select labelId="graficos-periodo-label" id="graficos-periodo" sx={{ color: "#11192A" }} value={graphPeriod} label="Período" onChange={(e) => setGraphPeriod(e.target.value)}>
                       {GRAPH_PERIOD_OPTIONS.map((p) => (
                         <MenuItem key={p.key} value={p.key}>{p.label}</MenuItem>
                       ))}
                     </Select>
                   </FormControl>
                   <FormControl size="small" sx={{ minWidth: 180 }}>
-                    <InputLabel>Dispositivo</InputLabel>
-                    <Select sx={{ color: "#11192A" }} value={device} label="Dispositivo" onChange={(e) => setDevice(e.target.value)}>
+                    <InputLabel id="graficos-dispositivo-label">Dispositivo</InputLabel>
+                    <Select labelId="graficos-dispositivo-label" id="graficos-dispositivo" sx={{ color: "#11192A" }} value={device} label="Dispositivo" onChange={(e) => setDevice(e.target.value)}>
                       {DEVICE_OPTIONS.map((d) => (
                         <MenuItem key={d} value={d}>{d}</MenuItem>
                       ))}
@@ -1407,14 +1683,14 @@ const ClinicalReport = () => {
                   </Box>
                   <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                     <FormControl size="small" sx={{ minWidth: 220 }}>
-                      <InputLabel>Métrica</InputLabel>
-                      <Select sx={{ color: "#11192A" }} value={c.metric} label="Métrica" onChange={(e) => updateCriteria(idx, "metric", e.target.value)}>
+                      <InputLabel id={`${c.uid}-metrica-label`}>Métrica</InputLabel>
+                      <Select labelId={`${c.uid}-metrica-label`} id={`${c.uid}-metrica`} sx={{ color: "#11192A" }} value={c.metric} label="Métrica" onChange={(e) => updateCriteria(idx, "metric", e.target.value)}>
                         {ALERT_METRIC_OPTIONS.map((m) => (<MenuItem key={m.code} value={m.code}>{m.label}</MenuItem>))}
                       </Select>
                     </FormControl>
                     <FormControl size="small" sx={{ minWidth: 220 }}>
-                      <InputLabel>Condição</InputLabel>
-                      <Select sx={{ color: "#11192A" }} value={c.condition} label="Condição" onChange={(e) => updateCriteria(idx, "condition", e.target.value)}>
+                      <InputLabel id={`${c.uid}-condicao-label`}>Condição</InputLabel>
+                      <Select labelId={`${c.uid}-condicao-label`} id={`${c.uid}-condicao`} sx={{ color: "#11192A" }} value={c.condition} label="Condição" onChange={(e) => updateCriteria(idx, "condition", e.target.value)}>
                         {CONDITION_OPTIONS.map((cond) => (<MenuItem key={cond} value={cond}>{cond}</MenuItem>))}
                       </Select>
                     </FormControl>
@@ -1459,15 +1735,15 @@ const ClinicalReport = () => {
               <Paper sx={BLOCK}>
                 <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2 }}>
                   <FormControl size="small" sx={{ minWidth: 220 }}>
-                    <InputLabel>Período de referência</InputLabel>
-                    <Select sx={{ color: "#11192A" }} value={periodPreset} label="Período de referência" onChange={(e) => setPeriodPreset(e.target.value)}>
+                    <InputLabel id="gerar-periodo-label">Período de referência</InputLabel>
+                    <Select labelId="gerar-periodo-label" id="gerar-periodo" sx={{ color: "#11192A" }} value={periodPreset} label="Período de referência" onChange={(e) => setPeriodPreset(e.target.value)}>
                       {PERIOD_PRESETS.map((p) => (<MenuItem key={p.key} value={p.key}>{p.label}</MenuItem>))}
                       <MenuItem value="personalizado">Personalizado</MenuItem>
                     </Select>
                   </FormControl>
                   <FormControl size="small" sx={{ minWidth: 180 }}>
-                    <InputLabel>Dispositivo</InputLabel>
-                    <Select sx={{ color: "#11192A" }} value={device} label="Dispositivo" onChange={(e) => setDevice(e.target.value)}>
+                    <InputLabel id="gerar-dispositivo-label">Dispositivo</InputLabel>
+                    <Select labelId="gerar-dispositivo-label" id="gerar-dispositivo" sx={{ color: "#11192A" }} value={device} label="Dispositivo" onChange={(e) => setDevice(e.target.value)}>
                       {DEVICE_OPTIONS.map((d) => (<MenuItem key={d} value={d}>{d}</MenuItem>))}
                     </Select>
                   </FormControl>
@@ -1510,60 +1786,7 @@ const ClinicalReport = () => {
           )}
 
           {/* ═══ ABA 5 — Pacientes (RF09) ═══ */}
-          {tab === 5 && (
-            <Box>
-              <Typography sx={{ fontSize: 15, fontWeight: "bold", color: "#11192A", mb: 0.5 }}>
-                Lista de pacientes
-              </Typography>
-              <Typography sx={{ fontSize: 13, color: "#9e9e9e", mb: 3 }}>
-                Clique em um paciente para abrir o relatório clínico correspondente.
-              </Typography>
-
-              {!patients.length ? (
-                <Typography sx={{ color: "#9e9e9e", fontSize: 13 }}>Nenhum paciente cadastrado.</Typography>
-              ) : (
-                <TableContainer component={Paper} sx={{ backgroundColor: "white", boxShadow: 2, borderRadius: 2 }}>
-                  <Table>
-                    <TableHead>
-                      <TableRow sx={{ backgroundColor: "#f5f7ff" }}>
-                        <TableCell sx={{ fontWeight: "bold", fontSize: 13, color: "#11192A" }}>Nome</TableCell>
-                        <TableCell sx={{ fontWeight: "bold", fontSize: 13, color: "#11192A" }}>Condição</TableCell>
-                        <TableCell sx={{ fontWeight: "bold", fontSize: 13, color: "#11192A" }}>Status</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {patients.map((p) => (
-                        <TableRow
-                          key={p.id}
-                          hover
-                          selected={p.id === context.patientId}
-                          sx={{ cursor: "pointer" }}
-                          onClick={() => handleSelectPatient(p)}
-                        >
-                          <TableCell sx={{ fontSize: 13, color: "#11192A" }}>{p.name}</TableCell>
-                          <TableCell sx={{ fontSize: 13, color: "#11192A" }}>{p.condition || "—"}</TableCell>
-                          <TableCell>
-                            {(() => {
-                              const status = getPatientStatus(p.latestReport);
-                              return status ? (
-                                <Chip
-                                  size="small"
-                                  label={status.label}
-                                  sx={{ backgroundColor: status.bg, color: status.color, fontWeight: "bold", border: `1px solid ${status.border}`, fontSize: 11 }}
-                                />
-                              ) : (
-                                <Chip size="small" label="Sem dados" sx={{ backgroundColor: "#f5f5f5", color: "#9e9e9e", fontSize: 11 }} />
-                              );
-                            })()}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              )}
-            </Box>
-          )}
+          {tab === PATIENTS_TAB && patientsTabContent}
         </>
       )}
     </Box>

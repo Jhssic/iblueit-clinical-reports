@@ -21,7 +21,7 @@ import MenuItemTemplate from "./menu-item-template";
 import AddIcon from '@mui/icons-material/Add';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 
-import { pathRoutes } from "../../../providers/Routes";
+import { pathRoutes, hasRoleAccess, CLINICAL_REPORT_ROLES } from "../../../providers/Routes";
 import SelectPatient from "./select-patient";
 
 
@@ -41,6 +41,8 @@ const divider = (
 const MenuItens = ({ permission, patientList }) => {
   const [openCategoryPosition, setOpenCategoryPosition] = useState(0);
   const location = useLocation();
+  // Paciente (role "User") não vê o Relatório Clínico — só Administrador/Fisioterapeuta.
+  const canSeeClinicalReport = hasRoleAccess(CLINICAL_REPORT_ROLES);
 
   return (
     <List sx={{ marginTop: 2 }}>
@@ -133,42 +135,46 @@ const MenuItens = ({ permission, patientList }) => {
         ]}
       />
 
-      {divider}
-      <Typography
-        variant="subtitle1"
-        sx={{
-          marginLeft: 3.5,
-          marginBottom: 0.5,
-          fontSize: 14,
-          opacity: 0.45,
-          fontWeight: "bold",
-        }}
-      >
-        Relatórios
-      </Typography>
-      <ListItemButton
-        component={Link}
-        to={pathRoutes.CLINICAL_REPORT}
-        selected={location.pathname === pathRoutes.CLINICAL_REPORT}
-        sx={[
-          {
-            margin: "auto",
-            borderRadius: 2,
-            width: 260,
-            height: 50,
-            backgroundColor: "#11192A",
-          }, {
-            "&.Mui-selected": { backgroundColor: "#243761" },
-            "&.Mui-selected:hover": { backgroundColor: "rgba(195,195,195,0.45)" },
-            "&:hover": { backgroundColor: "rgba(195,195,195,0.45)" },
-          },
-        ]}
-      >
-        <ListItemIcon sx={{ color: "white", opacity: 0.7, minWidth: 30 }}>
-          <AssessmentIcon sx={{ fontSize: 17 }} />
-        </ListItemIcon>
-        <ListItemText sx={{ opacity: 0.75 }} primary="Relatório Clínico" />
-      </ListItemButton>
+      {canSeeClinicalReport && (
+        <>
+          {divider}
+          <Typography
+            variant="subtitle1"
+            sx={{
+              marginLeft: 3.5,
+              marginBottom: 0.5,
+              fontSize: 14,
+              opacity: 0.45,
+              fontWeight: "bold",
+            }}
+          >
+            Relatórios
+          </Typography>
+          <ListItemButton
+            component={Link}
+            to={pathRoutes.CLINICAL_REPORT}
+            selected={location.pathname === pathRoutes.CLINICAL_REPORT}
+            sx={[
+              {
+                margin: "auto",
+                borderRadius: 2,
+                width: 260,
+                height: 50,
+                backgroundColor: "#11192A",
+              }, {
+                "&.Mui-selected": { backgroundColor: "#243761" },
+                "&.Mui-selected:hover": { backgroundColor: "rgba(195,195,195,0.45)" },
+                "&:hover": { backgroundColor: "rgba(195,195,195,0.45)" },
+              },
+            ]}
+          >
+            <ListItemIcon sx={{ color: "white", opacity: 0.7, minWidth: 30 }}>
+              <AssessmentIcon sx={{ fontSize: 17 }} />
+            </ListItemIcon>
+            <ListItemText sx={{ opacity: 0.75 }} primary="Relatório Clínico" />
+          </ListItemButton>
+        </>
+      )}
 
       {divider}
 

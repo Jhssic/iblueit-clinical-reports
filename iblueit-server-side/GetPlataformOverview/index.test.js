@@ -32,6 +32,8 @@ describe('GetPlataformOverview', () => {
         const context = await run();
         expect(PlataformOverviewModel.find).toHaveBeenCalledWith({}, null, { sort: { created_at: -1 } });
         expect(context.res.status).toBe(200);
+        expect(context.res.body.success).toBe(true);
+        expect(context.res.body.message).toBe('Consulta realizada com sucesso.');
         expect(context.res.body.data).toEqual([{ score: 10 }]);
     });
 

@@ -17,6 +17,7 @@ import MiniGamesComparative from "../pages/miniGames/comparative";
 import GameConfigurationCreatePage from "../pages/gameConfigurationCreate";
 import GameConfigurationPage from "../pages/gameConfigurationDefine";
 import ClinicalReport from "../pages/clinicalReport";
+import { getTokenParameters } from "./sessionStorage";
 
 
 export const pathRoutes = {
@@ -37,6 +38,20 @@ export const pathRoutes = {
 	GAME_CONFIGURATION_DEFINE:'/gameConfiguration/define',
 	CLINICAL_REPORT: '/relatorio-clinico',
 }
+
+// Relatório clínico é ferramenta do profissional: o paciente (role "User")
+// não vê o item de menu nem acessa a rota (o backend também exige esses papéis).
+export const CLINICAL_REPORT_ROLES = ["Administrator", "Therapist"];
+
+// `roles` ausente = rota liberada para qualquer usuário autenticado.
+export const hasRoleAccess = (roles) => {
+	if (!roles) return true;
+	try {
+		return roles.includes(getTokenParameters('role'));
+	} catch (_err) {
+		return false; // sem credenciais salvas
+	}
+};
 
 const routes = [{
 	path: pathRoutes.HOME,
@@ -118,6 +133,7 @@ const routes = [{
 	title: 'Relatório Clínico',
 	component: () => (<ClinicalReport />),
 	privated: true,
+	roles: CLINICAL_REPORT_ROLES,
 },{
 	path: '*',
 	title: 'Pagina não encontrada',

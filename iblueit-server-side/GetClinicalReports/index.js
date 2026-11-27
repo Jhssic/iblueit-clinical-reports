@@ -1,3 +1,8 @@
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const BRASILIA_OFFSET = '-03:00';
+const brasiliaDayStart = (day) => new Date(`${day}T00:00:00.000${BRASILIA_OFFSET}`);
+const brasiliaDayEnd = (day) => new Date(`${day}T23:59:59.999${BRASILIA_OFFSET}`);
+
 module.exports = async function getClinicalReports(context, req) {
     const mongoose = require('mongoose');
     const DATABASE = process.env.MongoDbAtlas;
@@ -38,11 +43,24 @@ module.exports = async function getClinicalReports(context, req) {
         return;
     }
 
+    // dataIni/dataFim chegam do front como "YYYY-MM-DD" (input date) e são
+    // tratadas como dias do calendário de Brasília. Antes a string era
+    // montada sem fuso ("YYYY-MM-DD 00:00:00:000") e o resultado dependia do
+    // fuso do servidor (UTC na Azure = 21h do dia anterior em Brasília).
+    // Offset fixo -03:00: o Brasil não tem horário de verão desde 2019.
+    const { dataIni, dataFim } = req.query;
+    const invalidDate = [dataIni, dataFim].find((d) => d && !DATE_ONLY.test(d));
+    if (invalidDate) {
+        context.res = { status: 400, body: utils.createResponse(false, true, "Datas devem estar no formato AAAA-MM-DD.", null, 2) };
+        context.done();
+        return;
+    }
+
     const filter = { pacientId, archived: req.query.archived === 'true' };
-    if (req.query.dataIni) {
-        filter.created_at = { $gte: new Date(`${req.query.dataIni} 00:00:00:000`) };
-        if (req.query.dataFim) {
-            filter.created_at.$lte = new Date(`${req.query.dataFim} 23:59:59:999`);
+    if (dataIni) {
+        filter.created_at = { $gte: brasiliaDayStart(dataIni) };
+        if (dataFim) {
+            filter.created_at.$lte = brasiliaDayEnd(dataFim);
         }
     }
 

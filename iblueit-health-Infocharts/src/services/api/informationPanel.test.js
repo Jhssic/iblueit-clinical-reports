@@ -56,6 +56,19 @@ describe("getPatientInformation (painel de informações)", () => {
     expect(porCampo["Observações"]).toBe("-");
   });
 
+  it("traduz condição restritiva (antes o card ficava vazio) e usa '-' sem sexo/condição", async () => {
+    axios.get
+      .mockResolvedValueOnce({ data: { data: { ...paciente, condition: "Restrictive" } } })
+      .mockResolvedValueOnce({ data: { data: { ...paciente, sex: undefined, condition: undefined } } });
+
+    const restritivo = Object.fromEntries((await getPatientInformation(buildContext())).map((d) => [d.fieldName, d.fieldValue]));
+    expect(restritivo["Condição"]).toBe("Restritivo");
+
+    const semDados = Object.fromEntries((await getPatientInformation(buildContext())).map((d) => [d.fieldName, d.fieldValue]));
+    expect(semDados.Sexo).toBe("-");
+    expect(semDados["Condição"]).toBe("-");
+  });
+
   it("retorna lista vazia quando o paciente não é encontrado", async () => {
     axios.get.mockResolvedValue({ data: { data: null } });
     await expect(getPatientInformation(buildContext())).resolves.toEqual([]);

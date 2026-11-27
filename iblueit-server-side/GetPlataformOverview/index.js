@@ -65,11 +65,11 @@ module.exports = async function getPlataformOverview(context, req) {
         context.log("[DB QUERYING] - PlataformOverview Get");
         context.res = {
             status: 200,
-            body: utils.createResponse(false,
-                false,
-                "Parâmetros de consulta inexistentes.",
+            body: utils.createResponse(true,
+                true,
+                "Consulta realizada com sucesso.",
                 plataformOverviews,
-                300)
+                null)
         }
     } catch (err) {
         context.log("[DB QUERYING] - ERROR: ", err);

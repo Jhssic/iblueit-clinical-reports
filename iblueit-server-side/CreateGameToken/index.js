@@ -45,7 +45,7 @@ module.exports = async function createGameToken(context, req) {
         if (!user) {
             context.res = {
                 status: 404,
-                body: utils.createResponse(true,
+                body: utils.createResponse(false,
                     true,
                     "Usuário inexistente!.",
                     { userId: gameTokenReq.userId },

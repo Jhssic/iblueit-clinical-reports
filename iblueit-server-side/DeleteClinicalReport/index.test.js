@@ -47,7 +47,7 @@ describe('DeleteClinicalReport', () => {
     test('LGPD: recusa excluir relatório que ainda não foi arquivado', async () => {
         ClinicalReportModel.findOne.mockResolvedValue({ _id: 'rel-1', archived: false });
         const context = await run();
-        expect(context.res.status).toBe(400);
+        expect(context.res.status).toBe(409);
         expect(context.res.body.message).toMatch(/Arquive o relatório/);
         expect(ClinicalReportModel.deleteOne).not.toHaveBeenCalled();
         expect(AlertRecordModel.deleteMany).not.toHaveBeenCalled();

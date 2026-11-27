@@ -60,15 +60,22 @@ describe('GetClinicalReports', () => {
 
         const filtro = ClinicalReportModel.find.mock.calls[0][0];
         expect(filtro.archived).toBe(true);
-        expect(filtro.created_at.$gte).toEqual(new Date('2024-01-01 00:00:00:000'));
-        expect(filtro.created_at.$lte).toEqual(new Date('2024-01-31 23:59:59:999'));
+        // dias do calendário de Brasília (UTC-3), independente do fuso do servidor
+        expect(filtro.created_at.$gte).toEqual(new Date('2024-01-01T03:00:00.000Z'));
+        expect(filtro.created_at.$lte).toEqual(new Date('2024-02-01T02:59:59.999Z'));
     });
 
     test('filtra só pela data inicial quando não há data final', async () => {
         ClinicalReportModel.find.mockReturnValue(query([]));
         await run({ query: { dataIni: '2024-01-01' } });
         const filtro = ClinicalReportModel.find.mock.calls[0][0];
-        expect(filtro.created_at).toEqual({ $gte: new Date('2024-01-01 00:00:00:000') });
+        expect(filtro.created_at).toEqual({ $gte: new Date('2024-01-01T03:00:00.000Z') });
+    });
+
+    test('responde 400 com data fora do formato AAAA-MM-DD', async () => {
+        const context = await run({ query: { dataIni: '01/01/2024' } });
+        expect(context.res.status).toBe(400);
+        expect(ClinicalReportModel.find).not.toHaveBeenCalled();
     });
 
     test('responde 500 quando o banco falha', async () => {

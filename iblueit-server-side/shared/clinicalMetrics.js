@@ -22,7 +22,23 @@ const DEVICE_CAPACITIES_SUFFIX = {
     Cinta: 'Cinta',
 };
 
-async function extractMetricsForPeriod({ pacientId, device, start, end }, mongoose) {
+// Mínimo/máximo com laço simples: `Math.min(...valores)` espalha o array
+// inteiro como argumentos da função e estoura a pilha (RangeError) com as
+// dezenas de milhares de amostras de fluxo que um período longo acumula.
+function minMax(values) {
+    if (!values.length) return { min: null, max: null };
+    let min = values[0];
+    let max = values[0];
+    for (const v of values) {
+        if (v < min) min = v;
+        if (v > max) max = v;
+    }
+    return { min, max };
+}
+
+// `endExclusive`: usado pelo período anterior, que termina exatamente onde o
+// atual começa — com $lte uma sessão bem no limite seria contada nos dois.
+async function extractMetricsForPeriod({ pacientId, device, start, end, endExclusive = false }, mongoose) {
     require('./PlataformOverview');
     require('./GameParameter');
     require('./FlowDataDevice');
@@ -32,13 +48,17 @@ async function extractMetricsForPeriod({ pacientId, device, start, end }, mongoo
     const GameParameterModel = mongoose.model('GameParameter');
     const PacientModel = mongoose.model('Pacient');
 
-    const dateFilter = { $gte: start, $lte: end };
+    const dateFilter = endExclusive ? { $gte: start, $lt: end } : { $gte: start, $lte: end };
 
     // Filtra pela data real da sessão (playFinish), não por created_at — a data
     // de inserção no banco não é garantia da data em que a sessão aconteceu
     // (ex: sincronização atrasada, importação de dados históricos).
+    // Filtra também pelo dispositivo do relatório (gameDevice), igual a
+    // alertEvaluation.js — sem isso, DJ/PJ/EB de sessões jogadas com outro
+    // dispositivo entravam no relatório do Pitaco/Manovacuômetro (RF02).
     const plataformSessions = await PlataformOverviewModel.find({
         pacientId,
+        gameDevice: device,
         playFinish: dateFilter,
     }).populate('flowDataDevicesId');
 
@@ -67,17 +87,21 @@ async function extractMetricsForPeriod({ pacientId, device, start, end }, mongoo
     const CGc = avg(gameParameters.map((g) => g.ObjectSpeedFactor).filter((v) => v != null));
 
     // FLi / FLe (fluxo inspiratório/expiratório) — derivados dos dados brutos de
-    // flowdatadevices já vinculados a cada sessão da plataforma.
-    let flowValues = [];
+    // flowdatadevices já vinculados a cada sessão da plataforma. Só as
+    // amostras do dispositivo do relatório (deviceName): uma sessão pode ter
+    // dados de mais de um dispositivo, e fluxo do Pitaco misturado com
+    // pressão do Manovacuômetro não tem significado clínico.
+    const flowValues = [];
     plataformSessions.forEach((s) => {
-        if (s.flowDataDevicesId?.flowDataDevices) {
-            s.flowDataDevicesId.flowDataDevices.forEach((d) => {
-                d.flowData.forEach((f) => flowValues.push(f.flowValue));
+        (s.flowDataDevicesId?.flowDataDevices || [])
+            .filter((d) => d.deviceName === device)
+            .forEach((d) => {
+                (d.flowData || []).forEach((f) => {
+                    if (f.flowValue != null) flowValues.push(f.flowValue);
+                });
             });
-        }
     });
-    const FLi = flowValues.length ? Math.min(...flowValues) : null;
-    const FLe = flowValues.length ? Math.max(...flowValues) : null;
+    const { min: FLi, max: FLe } = minMax(flowValues);
 
     // FR, PEmax, PImax, TEmax, TImax — CONFIRMAR contra Tabela 26. O RFC associa
     // essas métricas à collection calibrationoverviews, mas ela só guarda
@@ -142,4 +166,6 @@ module.exports = {
     missingOptionalFields,
     REQUIRED_METRICS,
     OPTIONAL_METRICS,
+    // Exportada só pra teste unitário.
+    minMax,
 };

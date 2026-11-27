@@ -48,8 +48,8 @@ module.exports = async function createAccount(context, req) {
 
             if (existingUser) {
                 context.res = {
-                    status: 400,
-                    body: utils.createResponse(true,
+                    status: 409,
+                    body: utils.createResponse(false,
                         false,
                         "Já existe um usuário cadastrado com este nome e/ou email.",
                         null,
@@ -66,7 +66,7 @@ module.exports = async function createAccount(context, req) {
 
             if (existingUser) {
                 context.res = {
-                    status: 400,
+                    status: 409,
                     body: utils.createResponse(false,
                         false,
                         "Já existe um usuário cadastrado com este nome.",

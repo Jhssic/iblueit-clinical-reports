@@ -36,6 +36,7 @@ describe('CreateGameToken', () => {
         const context = await run({ userId: USER_ID });
         expect(UserAccountModel.findById).toHaveBeenCalledWith(USER_ID);
         expect(context.res.status).toBe(404);
+        expect(context.res.body.success).toBe(false);
         expect(context.res.body.data).toEqual({ userId: USER_ID });
     });
 

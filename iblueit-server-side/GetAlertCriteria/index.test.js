@@ -27,6 +27,18 @@ describe('GetAlertCriteria', () => {
         expect(context.res.status).toBe(403);
     });
 
+    test('RN01: usuário sem papel clínico recebe 403; Therapist consulta normalmente', async () => {
+        UserAccountModel.findOne.mockResolvedValue({ _id: 'u', role: 'User' });
+        let context = await run();
+        expect(context.res.status).toBe(403);
+        expect(AlertCriteriaModel.find).not.toHaveBeenCalled();
+
+        UserAccountModel.findOne.mockResolvedValue({ _id: 't', role: 'Therapist' });
+        AlertCriteriaModel.find.mockReturnValue(query([]));
+        context = await run();
+        expect(context.res.status).toBe(200);
+    });
+
     test('responde 400 sem pacientId', async () => {
         const context = await run({ params: {} });
         expect(context.res.status).toBe(400);

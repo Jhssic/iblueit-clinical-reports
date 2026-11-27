@@ -1,7 +1,7 @@
 import React from "react";
 import { screen, fireEvent } from "@testing-library/react";
 import MenuItens from "./index";
-import { renderWithProviders } from "../../../testUtils/renderWithProviders";
+import { renderWithProviders, salvarCredenciais } from "../../../testUtils/renderWithProviders";
 
 const pacientes = [
   { id: "paciente-1", name: "Maria", birthDate: "2000-01-01" },
@@ -9,6 +9,11 @@ const pacientes = [
 ];
 
 describe("<MenuItens /> (menu lateral)", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    salvarCredenciais({ role: "Therapist" });
+  });
+
   it("usuário sem permissão não vê seleção de paciente nem itens de Sistema", () => {
     renderWithProviders(<MenuItens permission={false} patientList={[]} />);
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
@@ -39,5 +44,25 @@ describe("<MenuItens /> (menu lateral)", () => {
     const link = screen.getByText("Relatório Clínico").closest("a");
     expect(link).toHaveAttribute("href", "/relatorio-clinico");
     expect(link).toHaveClass("Mui-selected");
+  });
+
+  it("paciente (role User) não vê o item Relatório Clínico", () => {
+    salvarCredenciais({ role: "User" });
+    renderWithProviders(<MenuItens permission={false} patientList={[]} />);
+    expect(screen.queryByText("Relatório Clínico")).not.toBeInTheDocument();
+    expect(screen.queryByText("Relatórios")).not.toBeInTheDocument();
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+  });
+
+  it("sem credenciais salvas o item Relatório Clínico fica oculto", () => {
+    sessionStorage.clear();
+    renderWithProviders(<MenuItens permission={false} patientList={[]} />);
+    expect(screen.queryByText("Relatório Clínico")).not.toBeInTheDocument();
+  });
+
+  it("administrador vê o item Relatório Clínico", () => {
+    salvarCredenciais({ role: "Administrator" });
+    renderWithProviders(<MenuItens permission={true} patientList={pacientes} />);
+    expect(screen.getByText("Relatório Clínico")).toBeInTheDocument();
   });
 });

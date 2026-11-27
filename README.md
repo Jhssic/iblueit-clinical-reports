@@ -196,9 +196,9 @@ Desenvolver um módulo de geração automatizada de relatórios clínicos narrat
 - **RN01:** Apenas usuários autenticados com role `'Administrator'` ou `'Therapist'` (collection `useraccounts`) podem gerar e visualizar relatórios clínicos.
 - **RN02:** Um relatório só pode ser gerado se o MongoDB contiver dados suficientes nas collections obrigatórias do paciente, conforme métricas da Tabela 26 de Dias (2024): FR (`calibrationoverviews`), PEmax, PImax (`calibrationoverviews`), TEmax, TImax (`calibrationoverviews`), FLi, FLe (`flowdatadevices`), SpO2min (`calibrationoverviews`) e EB (`plataformoverviews`).
 - **RN03:** O texto narrativo gerado pelo LLM é sugestivo. Todo relatório deve exibir: *"Este relatório foi gerado automaticamente por IA e deve ser revisado pelo profissional responsável antes de ser incorporado ao prontuário clínico."*
-- **RN04:** Um alerta é disparado quando o critério configurado é atingido por 5 sessões consecutivas por padrão (configurável por paciente).
+- **RN04:** Um alerta é disparado quando o critério configurado é atingido por 5 sessões consecutivas por padrão (configurável por paciente). *Na implementação:* os critérios são avaliados só com sessões do mesmo dispositivo até o fim do período do relatório (antes da chamada ao LLM, que menciona os alertas no texto). Na EB (Escala de Borg) valor maior indica piora, então as condições valem no sentido inverso (deterioração = aumento; "Abaixo do valor" = acima do valor). Valores aceitos: "Deterioração consecutiva" inteiro ≥ 2; "Queda percentual >" e "Anomalia (IA)" entre 1 e 100.
 - **RN05:** O histórico de relatórios não pode ser excluído — apenas arquivado — preservando o rastro clínico para auditoria.
-- **RN06:** No primeiro relatório de um paciente, o sistema gera o texto sem análise comparativa, indicando que é a sessão de referência inicial.
+- **RN06:** No primeiro relatório de um paciente, o sistema gera o texto sem análise comparativa, indicando que é a sessão de referência inicial. *Na implementação:* "primeiro relatório" é contado por dispositivo, igual à avaliação inicial usada na seção Evolução.
 
 ### 2.6 Fora do Escopo
 
@@ -261,7 +261,7 @@ Os diagramas Mermaid desta seção estão disponíveis na pasta `docs/diagramas/
 
 ### 3.4 Fluxos Alternativos
 
-- **FA01 — Collections sem dados suficientes:** O sistema valida a existência de dados nas collections antes de acionar o LLM. Se insuficientes, exibe mensagem descritiva indicando quais collections estão vazias para o período selecionado.
+- **FA01 — Collections sem dados suficientes:** O sistema valida a existência de dados nas collections antes de acionar o LLM. Se insuficientes, a Azure Function responde **HTTP 422** (sem acionar o LLM) e o front exibe mensagem descritiva indicando quais collections estão vazias para o período selecionado.
 - **FA02 — Dados parcialmente ausentes:** Se algumas métricas estão ausentes em collections não obrigatórias, o sistema prossegue com as métricas disponíveis e indica no relatório quais campos não puderam ser consultados.
 - **FA03 — Falha na `URL_API_IA`:** Azure Function mantém `status=pending`, exibe mensagem de falha e permite nova tentativa sem necessidade de reconfigurar o período.
 - **FA04 — Primeiro relatório do paciente:** LLM recebe via prompt que é a sessão de referência inicial (sem histórico anterior) e gera o relatório sem análise comparativa.

@@ -100,8 +100,9 @@ def test_build_evolucao_compara_as_7_variaveis_principais():
     assert "Desempenho do Jogador (DJ)" in evolucao
     assert "Pontos da Jogada (PJ)" in evolucao
     assert "estável em relação à avaliação inicial" in evolucao  # CGc/FR/PEmax/PImax
-    # EB: 5 -> 4 (arredondado de 3.6) é redução, não deve aparecer como estável
-    assert "Escala de Borg (EB) apresentou redução" in evolucao
+    # EB: 5 -> 4 (arredondado de 3.6) — Borg menor é MELHORA (maior = pior)
+    assert "Escala de Borg (EB) apresentou melhora de 20.0%" in evolucao
+    assert "(de 5 para 4)" in evolucao
 
 
 def test_objective_trends_arredonda_eb_antes_de_comparar():
@@ -287,14 +288,24 @@ def test_build_resumo_com_todas_as_metricas_e_sessao_no_singular():
     assert "01/01/2026 a 07/01/2026" in resumo
     assert "(DJ) médio registrado foi de 0.50" in resumo
     assert "(PJ) foi de 120.0 pontos" in resumo
-    assert "(FR) média observada foi de 18 rpm" in resumo
+    # FR é a capacidade registrada na calibração, não uma média do período
+    assert "(FR) registrada na calibração do dispositivo é de 18 rpm" in resumo
+    assert "observada" not in resumo
     assert "Escala de Borg" in resumo
 
 
-def test_build_evolucao_ignora_metrica_ausente_ou_com_base_zero():
-    # PJ só no atual, CGc com valor inicial 0 (percentual indefinido) — ambos
-    # ficam de fora; sem nenhuma métrica comparável o resultado é None.
-    assert narrative._build_evolucao({"PJ": 10, "CGc": 5}, {"CGc": 0}) is None
+def test_build_evolucao_ignora_metrica_ausente():
+    # PJ só no atual — sem nenhuma métrica comparável o resultado é None.
+    assert narrative._build_evolucao({"PJ": 10}, {"CGc": 2}) is None
+
+
+def test_build_evolucao_base_zero_mostra_diferenca_absoluta():
+    # Borg 0 na avaliação inicial é comum: o percentual é indefinido, mas a
+    # métrica não pode sumir da Evolução.
+    texto = narrative._build_evolucao({"EB": 3, "CGc": 1.5}, {"EB": 0, "CGc": 0})
+    assert "Escala de Borg (EB) apresentou piora de 3 em valor absoluto" in texto
+    assert "(de 0 para 3)" in texto
+    assert "Carga Corrente (CGc) apresentou melhora de 1.50 em valor absoluto" in texto
 
 
 def test_build_evolucao_estabilidade_e_reducao():
@@ -303,8 +314,11 @@ def test_build_evolucao_estabilidade_e_reducao():
     assert "Frequência Respiratória (FR) apresentou redução de 50.0%" in texto
 
 
-def test_objective_trends_ignora_base_zero():
-    assert narrative._objective_trends({"DJ": 0.5}, {"DJ": 0}) == {}
+def test_objective_trends_base_zero_usa_sinal_da_diferenca():
+    assert narrative._objective_trends({"DJ": 0.5, "EB": 2}, {"DJ": 0, "EB": 0}) == {
+        "DJ": "melhora",
+        "EB": "piora",
+    }
 
 
 def test_check_acronym_expansions_detecta_sigla_com_nome_inventado():
@@ -489,3 +503,209 @@ def test_generate_via_llm_usa_temperatura_zero_para_ser_replicavel(monkeypatch):
     monkeypatch.setattr(openai, "OpenAI", _Client)
     narrative._generate_via_llm(_PAYLOAD_LLM, api_key="fake-key")
     assert chamadas[0]["temperature"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Sentido clínico das métricas (EB: maior = pior; FR: neutra)
+# ---------------------------------------------------------------------------
+
+
+def test_trend_word_respeita_sentido_da_metrica():
+    assert narrative._trend_word(3, "EB") == "piora"
+    assert narrative._trend_word(-3, "EB") == "melhora"
+    assert narrative._trend_word(2, "FR") == "aumento"
+    assert narrative._trend_word(-2, "FR") == "redução"
+    assert narrative._trend_word(1, "DJ") == "melhora"
+    assert narrative._trend_word(0, "EB") == "estabilidade"
+
+
+def test_build_evolucao_borg_subindo_e_piora():
+    # Caso do bug: EB 3 -> 6 saía como "apresentou melhora de 100.0%".
+    texto = narrative._build_evolucao({"EB": 6}, {"EB": 3})
+    assert "Escala de Borg (EB) apresentou piora de 100.0%" in texto
+    assert "melhora" not in texto
+
+
+def test_build_evolucao_fr_usa_termo_neutro():
+    texto = narrative._build_evolucao({"FR": 18}, {"FR": 12})
+    assert "Frequência Respiratória (FR) apresentou aumento de 50.0%" in texto
+
+
+def test_check_coherence_borg_piora_quando_subiu_nao_e_incoerente():
+    trends = narrative._objective_trends({"EB": 6}, {"EB": 3})
+    assert trends == {"EB": "piora"}
+    texto = "A Escala de Borg (EB) apresentou piora, passando de 3 para 6."
+    assert narrative._check_coherence(texto, None, trends, {"EB": 6}) == []
+    assert narrative._check_coherence("O EB aumentou no período.", None, trends) == []
+
+
+def test_check_coherence_borg_subiu_descrito_como_melhora_e_incoerente():
+    trends = narrative._objective_trends({"EB": 6}, {"EB": 3})
+    avisos = narrative._check_coherence("O EB apresentou melhora no período.", None, trends)
+    assert len(avisos) == 1
+    assert avisos[0]["esperado"] == "piora"
+    avisos = narrative._check_coherence("O EB caiu no período.", None, trends)
+    assert len(avisos) == 1
+
+
+def test_check_coherence_borg_caiu_descrito_como_reducao_e_melhora_e_coerente():
+    trends = narrative._objective_trends({"EB": 2}, {"EB": 5})
+    assert trends == {"EB": "melhora"}
+    texto = "A EB reduziu, o que indica melhora do esforço percebido."
+    assert narrative._check_coherence(texto, None, trends) == []
+
+
+def test_check_coherence_fr_ignora_melhora_piora():
+    # FR é neutra: só "aumento"/"redução" indicam sentido.
+    trends = narrative._objective_trends({"FR": 18}, {"FR": 12})
+    assert narrative._check_coherence("A FR apresentou melhora.", None, trends) == []
+    assert len(narrative._check_coherence("A FR diminuiu.", None, trends)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Siglas, arredondamento, datas e unidades
+# ---------------------------------------------------------------------------
+
+
+def test_check_acronym_expansions_ignora_parenteses_numericos_e_aceita_unidade():
+    texto = "O DJ (0,62) subiu. A EB (Escala de Borg, 0–10) ficou em 3. FLi (-10) estável."
+    assert narrative._check_acronym_expansions(texto, {"DJ": 0.62, "EB": 3, "FLi": -10}) == []
+    # expansão errada continua sendo pega
+    assert narrative._check_acronym_expansions("DJ (Dado Jogado)", {"DJ": 1})
+
+
+def test_round_borg_arredonda_meio_para_cima():
+    # round() do Python daria 2 (arredondamento bancário)
+    assert narrative._round_borg({"EB": 2.5})["EB"] == 3
+    assert narrative._round_borg({"EB": 3.5})["EB"] == 4
+    assert narrative._round_borg({"EB": 0.49})["EB"] == 0
+
+
+def test_format_date_usa_fuso_de_brasilia():
+    # fim do período enviado pelo front: endOf('day') em Brasília = 02:59Z do dia seguinte
+    assert narrative._format_date("2026-01-08T02:59:59.999Z") == "07/01/2026"
+    assert narrative._format_date("2026-01-01T03:00:00.000Z") == "01/01/2026"
+    # data sem fuso é tratada como já local
+    assert narrative._format_date("2026-01-07") == "07/01/2026"
+
+
+def test_tz_brasil_tem_offset_menos_3():
+    from datetime import datetime
+
+    assert narrative.TZ_BRASIL.utcoffset(datetime(2026, 1, 1)).total_seconds() == -3 * 3600
+
+
+def test_unidades_corretas_por_dispositivo():
+    metrics = {"CGc": 1.5, "PEmax": 60, "PImax": 40, "FLe": 30}
+    pitaco = {l["sigla"]: l["unidade"] for l in narrative._build_dados_brutos(metrics, {}, "Pitaco")}
+    mano = {l["sigla"]: l["unidade"] for l in narrative._build_dados_brutos(metrics, {}, "Manovacuômetro")}
+    assert pitaco["CGc"] == "fator adimensional"
+    assert pitaco["PEmax"] == "L/min"
+    assert pitaco["FLe"] == "L/min"
+    assert mano["PImax"] == "cmH2O"
+    # dispositivo desconhecido: unidade neutra em vez de chutar
+    sem = narrative._build_dados_brutos({"PEmax": 1}, {}, None)
+    assert sem[0]["unidade"] == "unidade do dispositivo"
+    assert "cmH2O" not in narrative._format_metrics_for_prompt({"PEmax": 1, "CGc": 1}, "Pitaco")
+
+
+# ---------------------------------------------------------------------------
+# Alertas, prompt do LLM e fallback
+# ---------------------------------------------------------------------------
+
+
+def test_describe_alert_usa_sentido_invertido_para_eb():
+    assert "abaixo de 0.3" in narrative.describe_alert(
+        {"metric": "DJ", "condition": "Abaixo do valor", "triggerValue": 0.3}
+    )
+    assert "acima de 6" in narrative.describe_alert(
+        {"metric": "EB", "condition": "Abaixo do valor", "triggerValue": 6.0}
+    )
+    assert "aumento percentual maior que 20%" in narrative.describe_alert(
+        {"metric": "EB", "condition": "Queda percentual >", "triggerValue": 20}
+    )
+    assert "piora em 5 sessões consecutivas" in narrative.describe_alert(
+        {"metric": "DJ", "condition": "Deterioração consecutiva", "triggerValue": 5}
+    )
+    assert "anômala" in narrative.describe_alert(
+        {"metric": "PJ", "condition": "Anomalia (IA)", "triggerValue": 10}
+    )
+
+
+def test_generate_template_menciona_alertas(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    result = narrative.generate(
+        {
+            "device": "Pitaco",
+            "isFirstReport": True,
+            "currentMetrics": {"DJ": 0.4},
+            "alerts": [{"metric": "DJ", "condition": "Deterioração consecutiva", "triggerValue": 5}],
+        }
+    )
+    assert "Alertas clínicos disparados" in result["resumoSessao"]
+    assert "Desempenho do Jogador (DJ): piora em 5 sessões consecutivas" in result["resumoSessao"]
+
+    sem_alerta = narrative.generate({"isFirstReport": True, "currentMetrics": {"DJ": 0.4}, "alerts": []})
+    assert "Alertas" not in sem_alerta["resumoSessao"]
+
+
+def _capture_prompt_client(content, chamadas):
+    class _Completions:
+        @staticmethod
+        def create(**kwargs):
+            chamadas.append(kwargs)
+            message = type("Msg", (), {"content": content})()
+            choice = type("Choice", (), {"message": message})()
+            return type("Resp", (), {"choices": [choice]})()
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            self.chat = type("Chat", (), {"completions": _Completions})()
+
+    return _Client
+
+
+def test_prompt_llm_tem_datas_locais_sessoes_alertas_e_primeiro_relatorio(monkeypatch):
+    chamadas = []
+    monkeypatch.setattr(openai, "OpenAI", _capture_prompt_client('{"resumoSessao": "Resumo.", "evolucao": null}', chamadas))
+    payload = {
+        "device": "Pitaco",
+        "period": {"start": "2026-01-01T03:00:00.000Z", "end": "2026-01-08T02:59:59.999Z"},
+        "sessionCount": 4,
+        "isFirstReport": True,
+        "currentMetrics": {"DJ": 0.5, "EB": 3},
+        "alerts": [{"metric": "EB", "condition": "Abaixo do valor", "triggerValue": 6}],
+    }
+    result = narrative._generate_via_llm(payload, api_key="fake-key")
+
+    prompt = chamadas[0]["messages"][0]["content"]
+    assert "Período: 01/01/2026 a 07/01/2026" in prompt
+    assert "T03:00" not in prompt
+    assert "Sessões realizadas no período: 4" in prompt
+    assert "Primeiro relatório do paciente neste dispositivo (avaliação inicial): sim" in prompt
+    assert "Primeira sessão" not in prompt
+    assert "Escala de Borg (EB): acima de 6" in prompt
+    # RN06: no primeiro relatório o texto da avaliação inicial é garantido, mesmo com evolucao null
+    assert result["generatedBy"] == "llm"
+    assert result["evolucao"] == narrative.TEXTO_AVALIACAO_INICIAL
+
+
+def test_generate_via_llm_falha_registra_log_sem_a_chave(monkeypatch, caplog):
+    class _Completions:
+        @staticmethod
+        def create(**kwargs):
+            raise RuntimeError("401 chave inválida: segredo-123")
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            self.chat = type("Chat", (), {"completions": _Completions})()
+
+    monkeypatch.setattr(openai, "OpenAI", _Client)
+    with caplog.at_level("WARNING", logger="narrative"):
+        result = narrative._generate_via_llm(
+            {"isFirstReport": True, "currentMetrics": {"DJ": 0.5}}, api_key="segredo-123"
+        )
+
+    assert result["generatedBy"] == "template"
+    assert "RuntimeError" in caplog.text
+    assert "segredo-123" not in caplog.text

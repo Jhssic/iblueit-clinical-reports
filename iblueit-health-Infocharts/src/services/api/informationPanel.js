@@ -5,17 +5,8 @@ import moment from "moment";
 import { BaseUrl } from '../../providers/_config';
 import { getTokenParameters } from '../../providers/sessionStorage';
 import { extractMessage } from '../../components/notification';
+import { translateSex, translateCondition } from '../../utils/patientLabels';
 
-
-const translateSex = (condition) => {
-  if (condition === 'Male') return 'Masculino';
-  return 'Feminino';
-}
-
-const translateCondition = (condition) => {
-  if (condition === 'Obstructive') return 'Obstrutivo';
-  if (condition === 'Healthy') return 'Saudável';
-}
 
 const getPatientInformation = async (context) => {
   context.setLoading(true);
@@ -27,8 +18,8 @@ const getPatientInformation = async (context) => {
     if (patientInformation) {
       newPatientData.push(
         { fieldName: 'Nome', fieldValue: patientInformation.name },
-        { fieldName: 'Sexo', fieldValue: translateSex(patientInformation.sex) },
-        { fieldName: 'Condição', fieldValue: translateCondition(patientInformation.condition) },
+        { fieldName: 'Sexo', fieldValue: translateSex(patientInformation.sex) || '-' },
+        { fieldName: 'Condição', fieldValue: translateCondition(patientInformation.condition) || '-' },
         { fieldName: 'Data de Nascimento', fieldValue: moment(patientInformation.birthday).format("L") },
         { fieldName: 'Peso', fieldValue: `${patientInformation.weight} kg` },
         { fieldName: 'Altura', fieldValue: `${patientInformation.height}  cm` },
