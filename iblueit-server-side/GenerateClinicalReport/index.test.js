@@ -236,6 +236,54 @@ describe('GenerateClinicalReport', () => {
         expect(context.done).toHaveBeenCalledTimes(1);
     });
 
+    describe('chave de IA própria do fisioterapeuta', () => {
+        const llmKeyCrypto = require('../shared/llmKeyCrypto');
+
+        beforeEach(() => {
+            process.env.LLM_KEY_ENCRYPTION_SECRET = 'segredo-de-teste';
+            jest.spyOn(clinicalMetrics, 'extractMetricsForPeriod').mockResolvedValue(metricasCompletas);
+            jest.spyOn(alertEvaluation, 'evaluateAlerts').mockResolvedValue([]);
+            models.ClinicalReport.countDocuments.mockResolvedValue(0);
+            axios.post.mockResolvedValue({ data: respostaIA });
+        });
+
+        afterEach(() => { delete process.env.LLM_KEY_ENCRYPTION_SECRET; });
+
+        test('envia a chave descriptografada no header X-LLM-Api-Key, nunca no corpo', async () => {
+            authenticate(mongoose, {
+                _id: 'terapeuta-1', role: 'Therapist',
+                llmApiKey: { encrypted: llmKeyCrypto.encrypt('gsk_chave_do_fisio_123456'), last4: '3456' },
+            });
+
+            const context = await run();
+
+            const [, payload, options] = axios.post.mock.calls[0];
+            expect(options).toEqual({ timeout: 60000, headers: { 'X-LLM-Api-Key': 'gsk_chave_do_fisio_123456' } });
+            expect(JSON.stringify(payload)).not.toContain('gsk_chave_do_fisio_123456');
+            expect(context.log).toHaveBeenCalledWith(expect.stringContaining('chave de IA: própria do profissional'));
+            expect(context.res.status).toBe(201);
+        });
+
+        test('sem chave configurada não envia header e registra uso da chave padrão', async () => {
+            const context = await run();
+
+            expect(axios.post.mock.calls[0][2]).toEqual({ timeout: 60000 });
+            expect(context.log).toHaveBeenCalledWith(expect.stringContaining('chave de IA: padrão do servidor'));
+        });
+
+        test('chave ilegível (segredo trocado) não impede o relatório: segue sem ela', async () => {
+            const encrypted = llmKeyCrypto.encrypt('gsk_chave_do_fisio_123456');
+            process.env.LLM_KEY_ENCRYPTION_SECRET = 'outro-segredo';
+            authenticate(mongoose, { _id: 'terapeuta-1', role: 'Therapist', llmApiKey: { encrypted } });
+
+            const context = await run();
+
+            expect(axios.post.mock.calls[0][2]).toEqual({ timeout: 60000 });
+            expect(context.log).toHaveBeenCalledWith(expect.stringContaining('Não foi possível ler a chave de IA'));
+            expect(context.res.status).toBe(201);
+        });
+    });
+
     test('responde 500 quando o banco falha', async () => {
         models.Pacient.findById.mockRejectedValue(new Error('mongo caiu'));
         const context = await run();

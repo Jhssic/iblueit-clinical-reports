@@ -37,6 +37,37 @@ def test_generate_report_usa_template_sem_chave_de_api(monkeypatch):
     assert "Pitaco" in body["resumoSessao"]
 
 
+def test_generate_report_repassa_chave_do_header_para_o_narrative(monkeypatch):
+    recebido = {}
+
+    def _fake_generate(payload, api_key=None):
+        recebido["api_key"] = api_key
+        return {"generatedBy": "llm"}
+
+    monkeypatch.setattr(main.narrative, "generate", _fake_generate)
+    payload = {"device": "Pitaco", "period": {}, "sessionCount": 1, "currentMetrics": {}}
+
+    response = client.post("/generate-report", json=payload, headers={"X-LLM-Api-Key": "chave-do-fisio"})
+
+    assert response.status_code == 200
+    assert recebido["api_key"] == "chave-do-fisio"
+
+
+def test_generate_report_sem_header_nao_envia_chave(monkeypatch):
+    recebido = {}
+
+    def _fake_generate(payload, api_key=None):
+        recebido["api_key"] = api_key
+        return {"generatedBy": "template"}
+
+    monkeypatch.setattr(main.narrative, "generate", _fake_generate)
+    payload = {"device": "Pitaco", "period": {}, "sessionCount": 1, "currentMetrics": {}}
+
+    client.post("/generate-report", json=payload)
+
+    assert recebido["api_key"] is None
+
+
 def test_detect_anomaly_endpoint_historico_insuficiente():
     response = client.post("/detect-anomaly", json={"values": [60, 61, 59]})
 

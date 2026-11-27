@@ -4,7 +4,8 @@
       "AzureWebJobsStorage": "",
       "FUNCTIONS_WORKER_RUNTIME": "node",
       "MongoDbAtlas":"MongoDBString",
-      "URL_API_IA": "URL Server API IA"
+      "URL_API_IA": "URL Server API IA",
+      "LLM_KEY_ENCRYPTION_SECRET": "segredo aleatório longo (ex: openssl rand -base64 32)"
     },
     "Host": {
       "CORS": "*",
