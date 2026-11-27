@@ -11,6 +11,14 @@ const UserAccountSchema = mongoose.Schema({
         token: { type: String },
         description: { type: String },
         createdAt: { type: Date }
+    },
+    // Chave de API de IA própria do fisioterapeuta (opcional). `encrypted` é
+    // AES-256-GCM (ver shared/llmKeyCrypto.js) e nunca é devolvido ao front;
+    // `last4` serve só para exibir "••••a1b2" na tela de configuração.
+    llmApiKey: {
+        encrypted: { type: String },
+        last4: { type: String },
+        updatedAt: { type: Date }
     }
 },
     { timestamps: { createdAt: 'created_at', updatedAt: 'updated_At' }, toJSON: { virtuals: true } }

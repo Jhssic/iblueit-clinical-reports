@@ -11,6 +11,7 @@ mesmo formato de resposta — nenhuma outra camada do sistema precisa mudar.
 import os
 import re
 from datetime import datetime
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -275,12 +276,15 @@ def _build_dados_brutos(current_metrics, metric_sources):
     return linhas
 
 
-def generate(payload: dict) -> dict:
+def generate(payload: dict, api_key: Optional[str] = None) -> dict:
     """Gera o relatório narrativo a partir das métricas já extraídas do MongoDB.
 
     `payload` segue o formato montado pela Azure Function GenerateClinicalReport:
     device, period, sessionCount, isFirstReport, currentMetrics, initialMetrics,
     metricSources, patientContext, alerts.
+
+    `api_key` é a chave própria do fisioterapeuta (header X-LLM-Api-Key). Ordem
+    de prioridade: chave do fisioterapeuta → GROQ_API_KEY do ambiente → template.
     """
     device = payload.get("device", "Pitaco")
     period = payload.get("period", {})
@@ -293,7 +297,7 @@ def generate(payload: dict) -> dict:
     initial_metrics = None if is_first_report else _round_borg(payload.get("initialMetrics"))
     metric_sources = payload.get("metricSources", {})
 
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key = api_key or os.environ.get("GROQ_API_KEY")
     if api_key:
         return _generate_via_llm(payload, api_key)
 
@@ -338,7 +342,7 @@ def _strip_markdown_fence(text: str) -> str:
 
 def _generate_via_llm(payload: dict, api_key: str) -> dict:
     """Chamada real ao LLM via Groq (API compatível com OpenAI).
-    Usada automaticamente quando GROQ_API_KEY está configurada no ambiente."""
+    Usada quando há chave do fisioterapeuta ou GROQ_API_KEY no ambiente."""
     from openai import OpenAI
 
     model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")

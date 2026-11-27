@@ -94,7 +94,8 @@ Editar:
     "AzureWebJobsStorage": "",
     "FUNCTIONS_WORKER_RUNTIME": "node",
     "MongoDbAtlas": "mongodb+srv://iblueit:<SENHA>@cluster-iblueit-v5.macmgc7.mongodb.net/IBLUEIT?retryWrites=true&w=majority",
-    "URL_API_IA": "http://localhost:8000"
+    "URL_API_IA": "http://localhost:8000",
+    "LLM_KEY_ENCRYPTION_SECRET": "<saída de: openssl rand -base64 32>"
   },
   "Host": {
     "CORS": "*",
@@ -102,6 +103,8 @@ Editar:
   }
 }
 ```
+
+🔑 **`LLM_KEY_ENCRYPTION_SECRET`** — chave mestra usada para criptografar (AES-256-GCM) a chave de API de IA que cada fisioterapeuta pode configurar em *menu da conta → Chave de IA*. Gere uma vez com `openssl rand -base64 32` e não troque depois: se ela mudar, as chaves já salvas ficam ilegíveis (os relatórios continuam sendo gerados com a chave padrão do servidor, e o fisioterapeuta só precisa salvar a chave de novo). Sem essa variável, o sistema funciona normalmente, mas não deixa ninguém salvar chave própria.
 
 ⚠️ **Nome do banco na URL** (`/IBLUEIT`, maiúsculo) — nomes de banco no MongoDB são case-sensitive. O banco real do projeto v5.0 se chama `IBLUEIT`.
 

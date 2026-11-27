@@ -8,6 +8,7 @@ import IconButton from '@mui/material/IconButton';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import Logout from '@mui/icons-material/Logout';
 import KeyIcon from '@mui/icons-material/Key';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 
 import { useMyContext } from "../../providers/MyContext";
 import {
@@ -15,6 +16,7 @@ import {
   getTokenParameters
 } from '../../providers/sessionStorage';
 import { pathRoutes } from "../../providers/Routes.jsx";
+import LlmKeyDialog from "../llmKeyDialog";
 
 
 const useStyles = makeStyles((theme) => ({
@@ -31,6 +33,9 @@ const AccountMenu = () => {
   const navigate = useNavigate();
   const [loggedInUserName] = useState(getTokenParameters('fullname'));
   const [permission] = useState(getTokenParameters('role') === "Administrator");
+  // Quem gera relatório clínico (Administrator/Therapist) pode configurar a própria chave de IA.
+  const [canConfigureLlmKey] = useState(["Administrator", "Therapist"].includes(getTokenParameters('role')));
+  const [llmKeyDialogOpen, setLlmKeyDialogOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
   const openAccountMenu = Boolean(anchorEl);
 
@@ -131,6 +136,20 @@ const AccountMenu = () => {
             Código de Envio
           </MenuItem>
         )}
+        {canConfigureLlmKey && (
+          <MenuItem
+            className={classes.menuItem}
+            onClick={() => {
+              setAnchorEl(null);
+              setLlmKeyDialogOpen(true);
+            }}
+          >
+            <ListItemIcon sx={{ color: "text.primary" }}>
+              <SmartToyIcon fontSize="small" />
+            </ListItemIcon>
+            Chave de IA
+          </MenuItem>
+        )}
         <MenuItem className={classes.menuItem} onClick={methodOfLogout}>
           <ListItemIcon sx={{ color: "text.primary" }}>
             <Logout fontSize="small" />
@@ -138,6 +157,9 @@ const AccountMenu = () => {
           Sair
         </MenuItem>
       </Menu>
+      {canConfigureLlmKey && (
+        <LlmKeyDialog open={llmKeyDialogOpen} onClose={() => setLlmKeyDialogOpen(false)} />
+      )}
     </>
   );
 };
