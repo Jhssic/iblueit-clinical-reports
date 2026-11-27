@@ -152,6 +152,7 @@ describe('GenerateClinicalReport', () => {
             initialMetrics: metricasCompletas.metrics,
             resumoSessao: 'Resumo',
             alerts: [alerta],
+            status: 'critico',
             generatedByUserId: 'terapeuta-1',
         });
         expect(relatorio.period.label).toBe('Fevereiro');
@@ -191,6 +192,8 @@ describe('GenerateClinicalReport', () => {
         expect(payload.initialMetrics).toEqual({ DJ: 0.1 });
 
         expect(models.ClinicalReport.instances[0].initialMetrics).toEqual({ DJ: 0.1 });
+        // sem alerta e DJ subiu (0,5 -> 0,7): estável
+        expect(models.ClinicalReport.instances[0].status).toBe('estavel');
         expect(models.AlertRecord.instances).toHaveLength(0);
         expect(context.res.status).toBe(201);
     });
